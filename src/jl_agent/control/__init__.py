@@ -1,5 +1,11 @@
 """Stable control-layer contracts shared by JL integrations."""
 
+from .hermes_projection import (
+    HermesIdentity,
+    HermesProjection,
+    HermesProjectionError,
+    HermesProjectionResult,
+)
 from .registry import (
     CapabilityDescriptor,
     CapabilityRegistry,
@@ -22,6 +28,10 @@ __all__ = [
     "EntrypointKind",
     "Health",
     "HealthState",
+    "HermesIdentity",
+    "HermesProjection",
+    "HermesProjectionError",
+    "HermesProjectionResult",
     "RegistryValidationError",
     "Source",
 ]
