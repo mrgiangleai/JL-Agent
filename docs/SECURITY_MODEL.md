@@ -1,0 +1,126 @@
+# Security and permissions model
+
+## Trust model
+
+JL Agent is a single-user assistant, but its inputs are not automatically
+trusted. Web content, files, messages, tool output, model output, MCP responses,
+skills, plugins, and scheduled prompts may be adversarial. An LLM decision,
+prompt instruction, string scanner, or approval regex is not a security
+boundary.
+
+The load-bearing boundary is OS/process isolation plus least-privilege macOS
+permissions and credentials. Hermes' local terminal backend has the permissions
+of the current user. Tasks that ingest untrusted content or require strong
+containment must use a whole-process/container sandbox with explicit filesystem
+and network policy. Sandboxing only the terminal does not contain in-process
+plugins, skills, code execution, or MCP children.
+
+## Action classes
+
+| Class | Examples | Default | Explicit confirmation |
+|---|---|---|---|
+| Read-only | Read an allowed local file, inspect app/window metadata, search public web, list calendar items | Allow within granted scope; audit sensitive reads | Required when entering a newly sensitive scope, capturing protected screen content, or sending private data to a remote model |
+| Reversible local | Create a new file, edit inside an approved workspace with recovery, open an app, change an undoable local setting | Allow only in scoped workspace with backup/undo semantics | Required if target is outside the active workspace, broad, ambiguous, or the change may disrupt another app/user workflow |
+| Destructive | Delete/overwrite without recovery, terminate unrelated processes, force-push, erase history, disable security controls | Deny unattended; preview exact target and impact | Always required immediately before execution; approval is single-action, short-lived, and invalidated by argument/target changes |
+| External communication | Send email/message, publish/post, submit form, create ticket visible to others | Drafting is reversible; transmission is not | Always required with recipient, channel, and final payload preview unless a narrowly scoped recurring automation was explicitly authorized |
+| Credential-sensitive | Read/use/store/export API keys, OAuth grants, Keychain access, authentication changes | Secrets remain in OS credential storage or injected environment; redact logs | Required for initial connection, privilege/scope expansion, reveal/export, or use outside the originally approved service and purpose |
+| Financial/high risk | Purchase, trade, transfer, subscription change, legal/medical decision execution, account recovery/security changes | No unattended execution; no model-only authorization | Always required with amount/asset/account/consequence preview and a separate trusted confirmation factor where supported |
+
+Read-only is not synonymous with harmless: sending a private file to a cloud
+model is both a read and an external disclosure, so the stricter class wins.
+When classes overlap, apply the maximum confirmation and isolation requirement.
+
+## Approval invariants
+
+- The permission engine evaluates normalized tool name, arguments, resolved
+  target, capability ID/version, caller, session, and current foreground app.
+- Approval binds to that exact tuple and expires quickly. Retries with changed
+  arguments require a new decision.
+- Timeout, unavailable approval surface, malformed decision, and lost session
+  all deny execution.
+- A model, skill, plugin, cron job, or MCP server cannot approve its own action.
+- Broad approvals such as “all deletes” or “all financial actions” are invalid.
+- Pre-authorization for scheduled external messages must state destination,
+  template/data scope, frequency, validity window, and revocation path. Any
+  expansion requires confirmation.
+- The final UI uses plain descriptions of effect, not raw command text alone.
+
+## macOS permissions
+
+Request OS permission only when the user enables a dependent capability:
+
+- Microphone: wake word and voice capture.
+- Speech recognition, when the selected provider/implementation needs it.
+- Screen Recording: pixels/screenshots; window metadata alone must not trigger it.
+- Accessibility/Input Monitoring: mouse, keyboard, global hotkeys, and UI tree
+  control.
+- Automation/Apple Events: per-target application automation.
+- Notifications: approval and scheduled-task delivery.
+
+The native app must show why a permission is needed, which capability will use
+it, a direct System Settings path, current status, and how to revoke it. A denied
+permission produces `blocked` health with remediation; it must not start a loop
+of repeated system prompts.
+
+## Computer-use safety
+
+PersonalJarvis provides useful patterns in `jarvis/cu/target_guard.py`,
+`jarvis/cu/ledger.py`, `jarvis/cu/verify.py`, and `jarvis/safety/tool_executor.py`.
+JL Agent will adapt the concepts, not embed its whole runtime:
+
+1. Capture the foreground app/window identity and geometry with the proposal.
+2. Re-check target identity immediately before input; fail closed if focus moved.
+3. Prefer accessibility elements over coordinates.
+4. For coordinate actions, bind coordinates to the captured frame and reject
+   stale geometry.
+5. Show a visible input-control indicator and provide a hardware/user interrupt.
+6. Verify observable postconditions after action and stop on ambiguity.
+7. Keep an action ledger that suppresses accidental duplicate side effects.
+
+## Credentials and data
+
+- No secret may appear in Git, committed YAML, command-line arguments, logs,
+  crash reports, capability descriptors, or model prompts unless the explicit
+  task requires the value and its destination is authorized.
+- Prefer Keychain for long-lived credentials and short-lived tokens for child
+  processes. Pass only allowlisted environment variables.
+- MCP servers, skills, and plugins receive no ambient credentials by default.
+- Screen images and local files are processed locally unless the user/policy
+  permits the selected remote provider. Redact sensitive regions or text before
+  remote vision where practical.
+- Audit records store action metadata, decision, actor, timestamp, and outcome;
+  payloads are hashed or summarized when they may contain private data.
+
+## External surfaces
+
+Bind local IPC/HTTP to loopback or user-owned Unix sockets, authenticate every
+caller, and use file permissions to restrict access. Network gateways require an
+explicit sender allowlist. Session IDs are routing identifiers, not credentials.
+Untrusted content never gains approval authority.
+
+## Supply chain
+
+- Pin upstream revision and package lock data; review diffs before upgrades.
+- Verify source, license, release provenance, and transitive changes.
+- Treat skills/plugins as code with agent-process privilege; review all scripts,
+  hooks, and binaries, not only their manifest.
+- Prefer isolated MCP/subprocess integration for externally maintained code.
+- Preserve Apache-2.0 LICENSE/NOTICE and modified-file notices if OpenJarvis or
+  PersonalJarvis code is later adapted.
+
+## Logging and incident response
+
+Logs are local, rotating, permission-restricted, and redacted. Security events
+include denials, approvals, credential-scope changes, capability install/update,
+external sends, destructive actions, financial attempts, and sandbox failures.
+A user can disable a capability, revoke credentials, stop the runtime, and
+export a sanitized audit summary. Raw secrets are never included in exports.
+
+## Known Phase 1 limitations
+
+This document is a target policy; the JL enforcement layer and native approval
+surface do not exist yet. Hermes' approval checks are useful defense in depth
+but, per its own `SECURITY.md`, they are not containment. Until Phase 2 adds the
+JL policy gate, run the baseline only in an explicitly trusted workspace and do
+not enable unattended destructive, communication, credential, or financial
+actions.
