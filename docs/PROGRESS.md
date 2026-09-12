@@ -1,6 +1,6 @@
 # Phase 1 progress
 
-Last updated: 2026-09-12 16:04 ICT
+Last updated: 2026-09-12 16:15 ICT
 
 ## Recovered state
 
@@ -60,7 +60,9 @@ Last updated: 2026-09-12 16:04 ICT
 
 ## Next action
 
-Phase 1 is complete. Begin Phase 2 only from the ordered scope in
-`PHASE1_REPORT.md`. Do not treat the partial ~41,000-test run as a pass; rerun
-the supported Linux full lane and official macOS-only lane before changing the
-Hermes pin.
+Phase 1 is complete. Baseline commit `a303939` and audit/report commit
+`37061b5` were pushed to `origin/main`; the final handoff is in
+`PHASE1_HANDOFF.md`. Begin Phase 2 only from its recommended starting point and
+the ordered scope in `PHASE1_REPORT.md`. Do not treat the partial ~41,000-test
+run as a pass; rerun the supported Linux full lane and official macOS-only lane
+before changing the Hermes pin.
