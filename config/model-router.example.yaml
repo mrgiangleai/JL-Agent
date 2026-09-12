@@ -1,0 +1,28 @@
+schema_version: 1
+policy:
+  prefer_local: true
+  allow_silent_cloud_escalation: false
+  require_budget_confirmation: true
+
+routes:
+  simple:
+    requirements: [text, tool-calling]
+    optimize_for: [latency, cost, locality]
+  coding:
+    requirements: [text, tool-calling, long-context]
+    optimize_for: [coding-quality, reliability]
+  vision:
+    requirements: [vision]
+    optimize_for: [quality, latency]
+  web_research:
+    requirements: [text, tool-calling, citations]
+    optimize_for: [quality, reliability]
+  high_reasoning:
+    requirements: [reasoning]
+    optimize_for: [quality]
+
+fallback:
+  max_attempts: 2
+  preserve_locality_constraint: true
+  preserve_data_policy: true
+  preserve_minimum_capabilities: true

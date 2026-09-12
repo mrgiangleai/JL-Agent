@@ -1,0 +1,39 @@
+# macOS and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+config/local*.yaml
+config/local*.yml
+config/local*.toml
+secrets/
+*.pem
+*.key
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# JavaScript / desktop artifacts
+node_modules/
+dist/
+build/
+release/
+*.log
+
+# JL Agent runtime state
+.jl-agent/
+data/
+runtime/
+artifacts/
