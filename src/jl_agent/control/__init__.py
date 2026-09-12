@@ -7,6 +7,13 @@ from .hermes_projection import (
     HermesProjectionError,
     HermesProjectionResult,
 )
+from .permissions import (
+    ActionClass,
+    ActionProposal,
+    DecisionOutcome,
+    PermissionDecision,
+    PermissionRiskEngine,
+)
 from .registry import (
     CapabilityDescriptor,
     CapabilityRegistry,
@@ -21,10 +28,13 @@ from .registry import (
 )
 
 __all__ = [
+    "ActionClass",
+    "ActionProposal",
     "CapabilityDescriptor",
     "CapabilityRegistry",
     "CapabilityType",
     "ConfigurationRequirements",
+    "DecisionOutcome",
     "Entrypoint",
     "EntrypointKind",
     "Health",
@@ -36,6 +46,8 @@ __all__ = [
     "HermesProjectionError",
     "HermesProjectionResult",
     "ProbeOutcome",
+    "PermissionDecision",
+    "PermissionRiskEngine",
     "RegistryValidationError",
     "Source",
 ]
