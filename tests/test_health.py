@@ -11,7 +11,6 @@ from jl_agent.control.registry import (
     HealthState,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "config" / "capabilities.example.yaml"
 

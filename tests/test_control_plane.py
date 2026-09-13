@@ -19,7 +19,6 @@ from jl_agent.control.router import (
     TaskCategory,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 HERMES_ROOT = ROOT / "upstream" / "hermes-agent"
 ROUTER_FIXTURE = ROOT / "config" / "model-router.example.yaml"

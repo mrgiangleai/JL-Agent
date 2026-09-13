@@ -13,7 +13,6 @@ from jl_agent.control.hermes_projection import (
 )
 from jl_agent.control.registry import HealthState
 
-
 ROOT = Path(__file__).resolve().parents[1]
 HERMES_ROOT = ROOT / "upstream" / "hermes-agent"
 

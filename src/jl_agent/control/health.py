@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import Mapping
 
 from .registry import CapabilityDescriptor, CapabilityRegistry, Health, HealthState
 

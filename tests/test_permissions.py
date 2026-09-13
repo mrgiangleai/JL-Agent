@@ -12,7 +12,6 @@ from jl_agent.control.permissions import (
 )
 from jl_agent.control.registry import CapabilityRegistry
 
-
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "config" / "capabilities.example.yaml"
 

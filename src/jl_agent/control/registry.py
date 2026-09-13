@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Self
 
 import yaml
+from yaml.resolver import BaseResolver
 
 
 class RegistryValidationError(ValueError):
@@ -64,7 +65,7 @@ def _construct_unique_mapping(
 
 
 _UniqueKeyLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    BaseResolver.DEFAULT_MAPPING_TAG,
     _construct_unique_mapping,
 )
 

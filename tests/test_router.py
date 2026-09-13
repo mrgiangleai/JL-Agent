@@ -15,7 +15,6 @@ from jl_agent.control.router import (
     TaskCategory,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "config" / "model-router.example.yaml"
 

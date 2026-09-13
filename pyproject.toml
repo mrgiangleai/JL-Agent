@@ -10,6 +10,9 @@ requires-python = ">=3.11,<3.14"
 license = "MIT"
 dependencies = ["PyYAML>=6.0,<7"]
 
+[project.optional-dependencies]
+dev = ["ruff==0.15.10", "ty==0.0.21"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -20,8 +23,8 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
-[tool.pyright]
-include = ["src", "tests"]
-pythonVersion = "3.11"
-typeCheckingMode = "strict"
+[tool.ty.environment]
+python-version = "3.11"
 
+[tool.ty.src]
+include = ["src", "tests"]

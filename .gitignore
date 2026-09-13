@@ -24,6 +24,7 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+*.egg-info/
 
 # JavaScript / desktop artifacts
 node_modules/
