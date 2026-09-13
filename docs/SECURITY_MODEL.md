@@ -118,12 +118,16 @@ export a sanitized audit summary. Raw secrets are never included in exports.
 
 ## Current implementation limitations
 
-Phase 2 implements deterministic action classification, allow/confirm/deny
-decisions, descriptor-scope validation, upstream-denial preservation, and an
-exact-action approval fingerprint in `src/jl_agent/control/permissions.py`.
-The native approval surface, trusted approval issuance/expiry/consumption,
-authenticated local IPC, and OS/process containment do not exist yet. A
-`requires-confirmation` result is therefore a stop condition, not permission to
-execute. Hermes' approval checks remain defense in depth and are not
-containment. Continue to use an explicitly trusted workspace and do not enable
-unattended destructive, communication, credential, or financial actions.
+Phase 3A adds authenticated, versioned, user-owned Unix-socket IPC; a
+runtime-generated credential provider; short-lived exact-fingerprint approvals
+with atomic one-time consumption; and a deterministic request lifecycle. The
+boundary produces only inert Hermes invocation references. It does not execute
+Hermes actions.
+
+Trusted approval issuance is an internal API for a future native consent
+surface; no IPC operation can issue or activate an approval. Keychain storage,
+the native UI, OS/process containment, audit persistence, and actual execution
+remain unimplemented. Hermes' approval checks remain defense in depth and are
+not containment. Continue to use an explicitly trusted workspace and do not
+enable unattended destructive, communication, credential, or financial
+actions.

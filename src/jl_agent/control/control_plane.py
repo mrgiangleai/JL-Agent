@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from .approvals import ApprovalRecord, ApprovalState
 from .health import HealthMonitor, ProbeOutcome
 from .hermes_projection import HermesIdentity, HermesProjection
 from .permissions import (
@@ -77,6 +78,13 @@ class JLControlPlane:
         self.permission_engine = permission_engine or PermissionRiskEngine()
 
     def prepare(self, request: ControlRequest) -> ControlPathResult:
+        checked = self.check_policy(request)
+        if checked.permission.outcome is not DecisionOutcome.MAY_PROCEED:
+            return checked
+        return self._prepare_route(checked, request)
+
+    def check_policy(self, request: ControlRequest) -> ControlPathResult:
+        """Evaluate health and policy without constructing an invocation."""
         projected = self.projection.project()
         dependency_states = {
             "core.hermes.agent": HealthState.HEALTHY,
@@ -105,23 +113,48 @@ class JLControlPlane:
             )
 
         permission = self.permission_engine.evaluate(capability, request.action)
-        if permission.outcome is not DecisionOutcome.MAY_PROCEED:
-            return ControlPathResult(
-                identity=projected.identity,
-                registry=healthy_registry,
-                capability=capability,
-                health_reasons=all_health_reasons[capability.id],
-                permission=permission,
-                route=None,
-                invocation=None,
-            )
+        return ControlPathResult(
+            identity=projected.identity,
+            registry=healthy_registry,
+            capability=capability,
+            health_reasons=all_health_reasons[capability.id],
+            permission=permission,
+            route=None,
+            invocation=None,
+        )
 
+    def prepare_confirmed(
+        self,
+        request: ControlRequest,
+        approval: ApprovalRecord,
+    ) -> ControlPathResult:
+        """Prepare only after rechecking policy against a consumed approval."""
+        if approval.state is not ApprovalState.CONSUMED:
+            raise ControlPlaneError("approval has not been consumed")
+        checked = self.check_policy(request)
+        if checked.permission.outcome is not DecisionOutcome.REQUIRES_CONFIRMATION:
+            raise ControlPlaneError(
+                "confirmed preparation requires confirmation policy"
+            )
+        if (
+            approval.binding_fingerprint != checked.permission.binding_fingerprint
+            or approval.caller_id != request.action.caller
+            or approval.session_id != request.action.session
+        ):
+            raise ControlPlaneError("consumed approval does not match policy decision")
+        return self._prepare_route(checked, request)
+
+    def _prepare_route(
+        self,
+        checked: ControlPathResult,
+        request: ControlRequest,
+    ) -> ControlPathResult:
         route = self.router.route(request.route, request.candidates)
         invocation = HermesInvocationProjection(
-            capability_id=capability.id,
-            capability_version=capability.version,
-            entrypoint_kind=capability.entrypoint.kind.value,
-            entrypoint_address=capability.entrypoint.address,
+            capability_id=checked.capability.id,
+            capability_version=checked.capability.version,
+            entrypoint_kind=checked.capability.entrypoint.kind.value,
+            entrypoint_address=checked.capability.entrypoint.address,
             provider=route.selected.provider,
             model=route.selected.model,
             fallback_candidate_ids=tuple(
@@ -129,11 +162,11 @@ class JLControlPlane:
             ),
         )
         return ControlPathResult(
-            identity=projected.identity,
-            registry=healthy_registry,
-            capability=capability,
-            health_reasons=all_health_reasons[capability.id],
-            permission=permission,
+            identity=checked.identity,
+            registry=checked.registry,
+            capability=checked.capability,
+            health_reasons=checked.health_reasons,
+            permission=checked.permission,
             route=route,
             invocation=invocation,
         )

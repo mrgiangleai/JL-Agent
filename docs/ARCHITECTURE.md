@@ -93,7 +93,8 @@ fallback. See `MODEL_ROUTER.md`.
 The future SwiftUI application owns native lifecycle, onboarding, microphone/
 screen/accessibility permission education, approval sheets, status, and local
 notifications. It is not allowed to execute tool calls directly. All actions
-flow through the runtime permission engine. Phase 1 intentionally contains no
+flow through the runtime permission engine. Phase 3A implements only the
+authenticated local transport and consent-consumption contracts; it contains no
 SwiftUI implementation.
 
 ## Data and control flow

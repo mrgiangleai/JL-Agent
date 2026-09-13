@@ -1,5 +1,17 @@
 """Stable control-layer contracts shared by JL integrations."""
 
+from .approvals import (
+    ApprovalError,
+    ApprovalRecord,
+    ApprovalState,
+    OneTimeApprovalStore,
+)
+from .auth import (
+    AuthenticatedRequestHandler,
+    CredentialError,
+    CredentialProvider,
+    FileCredentialProvider,
+)
 from .control_plane import (
     ControlPathResult,
     ControlPlaneError,
@@ -13,6 +25,18 @@ from .hermes_projection import (
     HermesProjection,
     HermesProjectionError,
     HermesProjectionResult,
+)
+from .ipc import (
+    DEFAULT_MAX_REQUEST_BYTES,
+    DEFAULT_TIMEOUT_SECONDS,
+    PROTOCOL_VERSION,
+    IPCError,
+    IPCProtocolError,
+    IPCRequestEnvelope,
+    IPCResponseEnvelope,
+    IPCStartupError,
+    UnixSocketServer,
+    send_request,
 )
 from .permissions import (
     ActionClass,
@@ -33,6 +57,12 @@ from .registry import (
     RegistryValidationError,
     Source,
 )
+from .request_state import (
+    IllegalRequestTransition,
+    RequestLifecycle,
+    RequestState,
+    SecureControlRequestHandler,
+)
 from .router import (
     CostClass,
     DeterministicModelRouter,
@@ -48,6 +78,10 @@ from .router import (
 __all__ = [
     "ActionClass",
     "ActionProposal",
+    "ApprovalError",
+    "ApprovalRecord",
+    "ApprovalState",
+    "AuthenticatedRequestHandler",
     "CapabilityDescriptor",
     "CapabilityRegistry",
     "CapabilityType",
@@ -56,6 +90,10 @@ __all__ = [
     "ControlPlaneError",
     "ControlRequest",
     "CostClass",
+    "CredentialError",
+    "CredentialProvider",
+    "DEFAULT_MAX_REQUEST_BYTES",
+    "DEFAULT_TIMEOUT_SECONDS",
     "DecisionOutcome",
     "DeterministicModelRouter",
     "Entrypoint",
@@ -69,17 +107,31 @@ __all__ = [
     "HermesProjection",
     "HermesProjectionError",
     "HermesProjectionResult",
+    "IPCError",
+    "IPCProtocolError",
+    "IPCRequestEnvelope",
+    "IPCResponseEnvelope",
+    "IPCStartupError",
+    "IllegalRequestTransition",
     "JLControlPlane",
+    "FileCredentialProvider",
     "ModelCandidate",
+    "OneTimeApprovalStore",
+    "PROTOCOL_VERSION",
     "ProbeOutcome",
     "PermissionDecision",
     "PermissionRiskEngine",
     "RegistryValidationError",
     "RejectedCandidate",
+    "RequestLifecycle",
+    "RequestState",
     "RouteDecision",
     "RouteRequest",
     "RouterPolicy",
     "RoutingError",
+    "SecureControlRequestHandler",
     "Source",
     "TaskCategory",
+    "UnixSocketServer",
+    "send_request",
 ]
