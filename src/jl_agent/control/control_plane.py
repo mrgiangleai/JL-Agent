@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -41,7 +42,7 @@ class ControlRequest:
 
 @dataclass(frozen=True, slots=True)
 class HermesInvocationProjection:
-    """Policy-approved references for Hermes; this object executes nothing."""
+    """Exact, inert Hermes turn projection; this object is not authorization."""
 
     capability_id: str
     capability_version: str
@@ -49,7 +50,14 @@ class HermesInvocationProjection:
     entrypoint_address: str
     provider: str
     model: str
+    route_candidate_id: str
     fallback_candidate_ids: tuple[str, ...]
+    fallback_routes: tuple[tuple[str, str], ...]
+    action: str
+    arguments_json: str
+    caller_id: str
+    session_id: str
+    binding_fingerprint: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +152,42 @@ class JLControlPlane:
             raise ControlPlaneError("consumed approval does not match policy decision")
         return self._prepare_route(checked, request)
 
+    def revalidate_route(self, request: ControlRequest) -> ControlPathResult:
+        """Recompute policy, health, identity, and route without granting approval."""
+        checked = self.check_policy(request)
+        if checked.permission.outcome is DecisionOutcome.MUST_BE_DENIED:
+            return checked
+        return self._prepare_route(checked, request)
+
+    def revalidate_prepared(
+        self,
+        request: ControlRequest,
+        expected: HermesInvocationProjection,
+        *,
+        consumed_approval: ApprovalRecord | None = None,
+    ) -> ControlPathResult:
+        """Rebuild an exact projection from fresh health, policy, and route state."""
+        checked = self.check_policy(request)
+        outcome = checked.permission.outcome
+        if outcome is DecisionOutcome.MUST_BE_DENIED:
+            raise ControlPlaneError("fresh policy denied execution")
+        if outcome is DecisionOutcome.REQUIRES_CONFIRMATION:
+            if consumed_approval is None:
+                raise ControlPlaneError("fresh policy requires a consumed approval")
+            if consumed_approval.state is not ApprovalState.CONSUMED:
+                raise ControlPlaneError("approval is not consumed")
+            if (
+                consumed_approval.binding_fingerprint
+                != checked.permission.binding_fingerprint
+                or consumed_approval.caller_id != request.action.caller
+                or consumed_approval.session_id != request.action.session
+            ):
+                raise ControlPlaneError("consumed approval no longer matches")
+        rebuilt = self._prepare_route(checked, request)
+        if rebuilt.invocation != expected:
+            raise ControlPlaneError("prepared Hermes projection is stale or changed")
+        return rebuilt
+
     def _prepare_route(
         self,
         checked: ControlPathResult,
@@ -157,9 +201,25 @@ class JLControlPlane:
             entrypoint_address=checked.capability.entrypoint.address,
             provider=route.selected.provider,
             model=route.selected.model,
+            route_candidate_id=route.selected.id,
             fallback_candidate_ids=tuple(
                 candidate.id for candidate in route.fallback_chain
             ),
+            fallback_routes=tuple(
+                (candidate.provider, candidate.model)
+                for candidate in route.fallback_chain
+            ),
+            action=request.action.action,
+            arguments_json=json.dumps(
+                request.action.normalized_arguments,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ),
+            caller_id=request.action.caller,
+            session_id=request.action.session,
+            binding_fingerprint=checked.permission.binding_fingerprint,
         )
         return ControlPathResult(
             identity=checked.identity,

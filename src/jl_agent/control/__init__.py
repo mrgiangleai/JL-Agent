@@ -6,18 +6,35 @@ from .approvals import (
     ApprovalState,
     OneTimeApprovalStore,
 )
+from .audit import AuditEvent, AuditLedger
 from .auth import (
     AuthenticatedRequestHandler,
     CredentialError,
     CredentialProvider,
     FileCredentialProvider,
 )
+from .codec import decode_control_request
 from .control_plane import (
     ControlPathResult,
     ControlPlaneError,
     ControlRequest,
     HermesInvocationProjection,
     JLControlPlane,
+)
+from .execution import (
+    AuthenticatedExecutionContext,
+    ExecutionGate,
+    ExecutionResult,
+    PreparedExecution,
+)
+from .execution_adapter import (
+    ExecutionErrorCategory,
+    HermesAIAgentRuntime,
+    HermesExecutionAdapter,
+    HermesExecutionStatus,
+    HermesRuntime,
+    HermesRuntimeRequest,
+    HermesRuntimeResult,
 )
 from .health import HealthAssessment, HealthMonitor, ProbeOutcome
 from .hermes_projection import (
@@ -81,6 +98,9 @@ __all__ = [
     "ApprovalError",
     "ApprovalRecord",
     "ApprovalState",
+    "AuditEvent",
+    "AuditLedger",
+    "AuthenticatedExecutionContext",
     "AuthenticatedRequestHandler",
     "CapabilityDescriptor",
     "CapabilityRegistry",
@@ -95,18 +115,28 @@ __all__ = [
     "DEFAULT_MAX_REQUEST_BYTES",
     "DEFAULT_TIMEOUT_SECONDS",
     "DecisionOutcome",
+    "decode_control_request",
     "DeterministicModelRouter",
     "Entrypoint",
     "EntrypointKind",
+    "ExecutionErrorCategory",
+    "ExecutionGate",
+    "ExecutionResult",
     "Health",
     "HealthAssessment",
     "HealthMonitor",
     "HealthState",
     "HermesIdentity",
+    "HermesAIAgentRuntime",
+    "HermesExecutionAdapter",
+    "HermesExecutionStatus",
     "HermesInvocationProjection",
     "HermesProjection",
     "HermesProjectionError",
     "HermesProjectionResult",
+    "HermesRuntime",
+    "HermesRuntimeRequest",
+    "HermesRuntimeResult",
     "IPCError",
     "IPCProtocolError",
     "IPCRequestEnvelope",
@@ -119,6 +149,7 @@ __all__ = [
     "OneTimeApprovalStore",
     "PROTOCOL_VERSION",
     "ProbeOutcome",
+    "PreparedExecution",
     "PermissionDecision",
     "PermissionRiskEngine",
     "RegistryValidationError",

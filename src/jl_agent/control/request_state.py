@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .approvals import ApprovalError, OneTimeApprovalStore
 from .auth import CredentialProvider
@@ -19,6 +19,9 @@ from .ipc import IPCRequestEnvelope, IPCResponseEnvelope
 from .permissions import DecisionOutcome
 from .router import RoutingError
 
+if TYPE_CHECKING:
+    from .execution import ExecutionGate
+
 
 class RequestState(StrEnum):
     RECEIVED = "received"
@@ -27,6 +30,8 @@ class RequestState(StrEnum):
     AWAITING_APPROVAL = "awaiting_approval"
     APPROVED = "approved"
     PREPARED = "prepared"
+    EXECUTING = "executing"
+    COMPLETED = "completed"
     DENIED = "denied"
     FAILED = "failed"
 
@@ -52,7 +57,13 @@ _LEGAL_TRANSITIONS: dict[RequestState, frozenset[RequestState]] = {
     RequestState.APPROVED: frozenset(
         {RequestState.PREPARED, RequestState.DENIED, RequestState.FAILED}
     ),
-    RequestState.PREPARED: frozenset(),
+    RequestState.PREPARED: frozenset(
+        {RequestState.EXECUTING, RequestState.DENIED}
+    ),
+    RequestState.EXECUTING: frozenset(
+        {RequestState.COMPLETED, RequestState.DENIED, RequestState.FAILED}
+    ),
+    RequestState.COMPLETED: frozenset(),
     RequestState.DENIED: frozenset(),
     RequestState.FAILED: frozenset(),
 }
@@ -66,9 +77,7 @@ class IllegalRequestTransition(RuntimeError):
 class RequestLifecycle:
     request_id: str
     state: RequestState = RequestState.RECEIVED
-    history: list[RequestState] = field(
-        default_factory=lambda: [RequestState.RECEIVED]
-    )
+    history: list[RequestState] = field(default_factory=lambda: [RequestState.RECEIVED])
 
     def transition(self, target: RequestState) -> None:
         if target not in _LEGAL_TRANSITIONS[self.state]:
@@ -92,23 +101,33 @@ class SecureControlRequestHandler:
         approvals: OneTimeApprovalStore,
         control_plane: JLControlPlane,
         request_decoder: RequestDecoder,
+        execution_gate: ExecutionGate | None = None,
     ) -> None:
         self.credentials = credentials
         self.approvals = approvals
         self.control_plane = control_plane
         self.request_decoder = request_decoder
+        self.execution_gate = execution_gate
 
     def __call__(self, envelope: IPCRequestEnvelope) -> IPCResponseEnvelope:
         lifecycle = RequestLifecycle(envelope.request_id)
         credential = envelope.credential
         if credential is None or not self.credentials.authenticate(credential):
             lifecycle.transition(RequestState.DENIED)
-            return _failure(envelope, lifecycle, "authentication_failed")
+            return self._failure(envelope, lifecycle, "authentication_failed")
         lifecycle.transition(RequestState.AUTHENTICATED)
 
-        if envelope.operation != "prepare":
+        execution_context = None
+        if self.execution_gate is not None:
+            execution_context = self.execution_gate.authenticated_context(
+                request_id=envelope.request_id,
+                caller_id=envelope.caller_id,
+                session_id=envelope.session_id,
+            )
+
+        if envelope.operation not in {"prepare", "execute"}:
             lifecycle.transition(RequestState.FAILED)
-            return _failure(envelope, lifecycle, "unsupported_operation")
+            return self._failure(envelope, lifecycle, "unsupported_operation")
         try:
             request = self.request_decoder(envelope)
             if not isinstance(request, ControlRequest):
@@ -116,29 +135,54 @@ class SecureControlRequestHandler:
             approval_id = _approval_id(envelope.payload)
         except (TypeError, ValueError):
             lifecycle.transition(RequestState.FAILED)
-            return _failure(envelope, lifecycle, "malformed_payload")
+            return self._failure(envelope, lifecycle, "malformed_payload")
 
         if (
             request.action.caller != envelope.caller_id
             or request.action.session != envelope.session_id
         ):
             lifecycle.transition(RequestState.DENIED)
-            return _failure(envelope, lifecycle, "identity_mismatch")
+            return self._failure(envelope, lifecycle, "identity_mismatch")
+
+        if envelope.operation == "execute":
+            if self.execution_gate is None or execution_context is None:
+                lifecycle.transition(RequestState.FAILED)
+                return self._failure(envelope, lifecycle, "execution_unavailable")
+            executed = self.execution_gate.execute(execution_context, request)
+            result = {
+                "state": executed.status.value,
+                "history": [state.value for state in executed.lifecycle],
+                "request_id": executed.request_id,
+                "caller_id": executed.caller_id,
+                "session_id": executed.session_id,
+                "output": executed.output,
+            }
+            if executed.status.value == "completed":
+                return IPCResponseEnvelope.success(envelope.request_id, result)
+            return IPCResponseEnvelope.failure(
+                envelope.request_id,
+                (
+                    executed.error_category.value
+                    if executed.error_category is not None
+                    else "execution_failed"
+                ),
+                f"request ended in {executed.status.value}",
+            )
 
         try:
             checked = self.control_plane.check_policy(request)
         except ControlPlaneError:
             lifecycle.transition(RequestState.DENIED)
-            return _failure(envelope, lifecycle, "policy_denied")
+            return self._failure(envelope, lifecycle, "policy_denied")
         except (RuntimeError, ValueError):
             lifecycle.transition(RequestState.FAILED)
-            return _failure(envelope, lifecycle, "preparation_failed")
+            return self._failure(envelope, lifecycle, "preparation_failed")
         lifecycle.transition(RequestState.POLICY_CHECKED)
 
         outcome = checked.permission.outcome
         if outcome is DecisionOutcome.MUST_BE_DENIED:
             lifecycle.transition(RequestState.DENIED)
-            return _failure(envelope, lifecycle, "policy_denied")
+            return self._failure(envelope, lifecycle, "policy_denied")
 
         if outcome is DecisionOutcome.MAY_PROCEED:
             lifecycle.transition(RequestState.APPROVED)
@@ -146,17 +190,28 @@ class SecureControlRequestHandler:
                 prepared = self.control_plane.prepare(request)
             except RoutingError:
                 lifecycle.transition(RequestState.FAILED)
-                return _failure(envelope, lifecycle, "preparation_failed")
+                return self._failure(envelope, lifecycle, "preparation_failed")
             except ControlPlaneError:
                 lifecycle.transition(RequestState.DENIED)
-                return _failure(envelope, lifecycle, "policy_denied")
+                return self._failure(envelope, lifecycle, "policy_denied")
             if (
                 prepared.permission.outcome is not DecisionOutcome.MAY_PROCEED
                 or prepared.invocation is None
             ):
                 lifecycle.transition(RequestState.DENIED)
-                return _failure(envelope, lifecycle, "policy_denied")
+                return self._failure(envelope, lifecycle, "policy_denied")
             lifecycle.transition(RequestState.PREPARED)
+            if self.execution_gate is not None and execution_context is not None:
+                try:
+                    self.execution_gate.register_prepared(
+                        execution_context,
+                        request=request,
+                        result=prepared,
+                        lifecycle=lifecycle,
+                    )
+                except (RuntimeError, ValueError):
+                    lifecycle.transition(RequestState.DENIED)
+                    return self._failure(envelope, lifecycle, "preparation_failed")
             return _prepared_response(envelope, lifecycle, prepared.invocation)
 
         lifecycle.transition(RequestState.AWAITING_APPROVAL)
@@ -178,21 +233,48 @@ class SecureControlRequestHandler:
             )
         except ApprovalError:
             lifecycle.transition(RequestState.DENIED)
-            return _failure(envelope, lifecycle, "approval_denied")
+            return self._failure(envelope, lifecycle, "approval_denied")
         lifecycle.transition(RequestState.APPROVED)
         try:
             prepared = self.control_plane.prepare_confirmed(request, consumed)
         except RoutingError:
             lifecycle.transition(RequestState.FAILED)
-            return _failure(envelope, lifecycle, "preparation_failed")
+            return self._failure(envelope, lifecycle, "preparation_failed")
         except ControlPlaneError:
             lifecycle.transition(RequestState.DENIED)
-            return _failure(envelope, lifecycle, "policy_denied")
+            return self._failure(envelope, lifecycle, "policy_denied")
         if prepared.invocation is None:
             lifecycle.transition(RequestState.FAILED)
-            return _failure(envelope, lifecycle, "preparation_failed")
+            return self._failure(envelope, lifecycle, "preparation_failed")
         lifecycle.transition(RequestState.PREPARED)
+        if self.execution_gate is not None and execution_context is not None:
+            try:
+                self.execution_gate.register_prepared(
+                    execution_context,
+                    request=request,
+                    result=prepared,
+                    lifecycle=lifecycle,
+                    approval_id=consumed.approval_id,
+                )
+            except (RuntimeError, ValueError):
+                lifecycle.transition(RequestState.DENIED)
+                return self._failure(envelope, lifecycle, "preparation_failed")
         return _prepared_response(envelope, lifecycle, prepared.invocation)
+
+    def _failure(
+        self,
+        envelope: IPCRequestEnvelope,
+        lifecycle: RequestLifecycle,
+        code: str,
+    ) -> IPCResponseEnvelope:
+        if self.execution_gate is not None:
+            self.execution_gate.record_boundary_denial(
+                request_id=envelope.request_id,
+                caller_id=envelope.caller_id,
+                session_id=envelope.session_id,
+                error_category=code,
+            )
+        return _failure(envelope, lifecycle, code)
 
 
 def _approval_id(payload: Mapping[str, Any]) -> str | None:
@@ -233,6 +315,7 @@ def _prepared_response(
                 "entrypoint_address": invocation.entrypoint_address,
                 "provider": invocation.provider,
                 "model": invocation.model,
+                "route_candidate_id": invocation.route_candidate_id,
                 "fallback_candidate_ids": list(invocation.fallback_candidate_ids),
             },
         },
