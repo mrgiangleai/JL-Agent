@@ -26,6 +26,17 @@ from .registry import (
     RegistryValidationError,
     Source,
 )
+from .router import (
+    CostClass,
+    DeterministicModelRouter,
+    ModelCandidate,
+    RejectedCandidate,
+    RouteDecision,
+    RouteRequest,
+    RouterPolicy,
+    RoutingError,
+    TaskCategory,
+)
 
 __all__ = [
     "ActionClass",
@@ -34,7 +45,9 @@ __all__ = [
     "CapabilityRegistry",
     "CapabilityType",
     "ConfigurationRequirements",
+    "CostClass",
     "DecisionOutcome",
+    "DeterministicModelRouter",
     "Entrypoint",
     "EntrypointKind",
     "Health",
@@ -45,9 +58,16 @@ __all__ = [
     "HermesProjection",
     "HermesProjectionError",
     "HermesProjectionResult",
+    "ModelCandidate",
     "ProbeOutcome",
     "PermissionDecision",
     "PermissionRiskEngine",
     "RegistryValidationError",
+    "RejectedCandidate",
+    "RouteDecision",
+    "RouteRequest",
+    "RouterPolicy",
+    "RoutingError",
     "Source",
+    "TaskCategory",
 ]
