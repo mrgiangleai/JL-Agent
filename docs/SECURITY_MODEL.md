@@ -118,16 +118,19 @@ export a sanitized audit summary. Raw secrets are never included in exports.
 
 ## Current implementation limitations
 
-Phase 3A adds authenticated, versioned, user-owned Unix-socket IPC; a
-runtime-generated credential provider; short-lived exact-fingerprint approvals
-with atomic one-time consumption; and a deterministic request lifecycle. The
-boundary produces only inert Hermes invocation references. It does not execute
-Hermes actions.
+Phase 3B extends the authenticated Phase 3A boundary with a strict wire codec,
+single-use execution gate, final policy/health/route revalidation, thin Hermes
+adapter, explicit execution states, and a private bounded audit ledger. The
+foreground service listens only on a user-owned Unix socket and publishes a
+private readiness file. Trusted approval issuance is still internal; normal
+IPC cannot issue or activate an approval.
 
-Trusted approval issuance is an internal API for a future native consent
-surface; no IPC operation can issue or activate an approval. Keychain storage,
-the native UI, OS/process containment, audit persistence, and actual execution
-remain unimplemented. Hermes' approval checks remain defense in depth and are
-not containment. Continue to use an explicitly trusted workspace and do not
-enable unattended destructive, communication, credential, or financial
-actions.
+The file credential provider is interim storage, not Keychain. Approval and
+prepared state are memory-only and intentionally disappear on restart. The
+service is serial and has no LaunchAgent/supervisor or native consent UI. The
+adapter is compatible with the exact pinned Hermes surface and must be reviewed
+on a pin change. Tests use a deterministic fake and make no provider/network/
+paid calls. Hermes guardrails remain defense in depth, not OS containment;
+in-process tools still have the runtime user's privileges. Continue to use an
+explicitly trusted workspace and do not enable unattended destructive,
+communication, credential, or financial actions.

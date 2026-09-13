@@ -46,6 +46,15 @@ MCP, local IPC, APIs, or subprocesses. Each adapter owns only its translation
 and lifecycle. It cannot import arbitrary Hermes internals, edit upstream
 files, own policy decisions, or bypass the capability registry.
 
+Phase 3B's execution adapter is deliberately narrower. It constructs pinned
+Hermes `run_agent.AIAgent` configuration from the selected provider, model,
+fallback chain, toolset, and session, then calls Hermes'
+`agent.agent_runtime_helpers.invoke_tool()` with the one exact tool and
+canonical arguments. That helper retains Hermes request/execution middleware,
+plugin pre-tool hooks, guardrails, enabled-tool validation, registry dispatch,
+and native tool implementation. JL does not run a second agent loop or copy
+fallback, registry, session, memory, approval, or tool-execution logic.
+
 ### MCP
 
 The preferred boundary for independently deployable tools. Each server is a
@@ -93,9 +102,21 @@ fallback. See `MODEL_ROUTER.md`.
 The future SwiftUI application owns native lifecycle, onboarding, microphone/
 screen/accessibility permission education, approval sheets, status, and local
 notifications. It is not allowed to execute tool calls directly. All actions
-flow through the runtime permission engine. Phase 3A implements only the
-authenticated local transport and consent-consumption contracts; it contains no
-SwiftUI implementation.
+flow through the runtime permission engine. Phase 3B adds only a foreground,
+user-local runtime service; it contains no SwiftUI or final macOS lifecycle
+management.
+
+### Execution Gate and Audit Ledger
+
+The execution gate owns an in-memory, single-use prepared record. Immediately
+before dispatch it rechecks authenticated caller/session identity, preparation
+TTL, exact Phase 2 fingerprint and consumed approval, current capability
+identity/version/health, upstream denial, and deterministic route. Any drift
+denies execution. The adapter accepts only an internal gate-issued command.
+
+Security events are appended to a private bounded JSONL ledger. The ledger
+stores allowlisted metadata and hashed references, never credentials, tokens,
+full action arguments, user content, or model reasoning.
 
 ## Data and control flow
 
@@ -109,6 +130,11 @@ SwiftUI implementation.
    required, is shown by the native app and is fail-closed on timeout.
 6. Hermes or the selected adapter executes the action.
 7. Health and audit events record metadata and outcomes without secrets.
+
+For the Phase 3B direct execution boundary, steps 4-6 are constrained to one
+already prepared tool projection: JL performs final revalidation and Hermes'
+native invocation helper performs the exact tool dispatch. This is not a second
+conversation/agent loop.
 
 ## External component rule
 

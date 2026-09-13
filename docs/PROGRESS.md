@@ -1,28 +1,20 @@
-# Phase 3A progress
+# Phase 3B progress
 
 Last updated: 2026-09-13 ICT
 
-## Phase 3A current state
+## Phase 3B current state
 
-- Step 1 — Local IPC is complete and focused tests pass.
-- The boundary is an AF_UNIX socket with a strict versioned JSON envelope,
-  request/caller/session identity, bounded frames and timeouts, user-only
-  runtime permissions, safe stale-socket recovery, and graceful shutdown.
-- The transport validates and dispatches envelopes only; it executes no Hermes
-  action or tool.
-- Step 2 — IPC Authentication is complete and focused tests pass. A
-  runtime-generated credential is stored in a user-only file, compared safely,
-  rotated/recreated explicitly, and checked before privileged dispatch. The
-  storage provider contract remains replaceable by a future Keychain provider.
-- Step 3 — One-time Approval Store is complete and focused tests pass. Exact
-  Phase 2 fingerprints are bound to caller/session, expire within a bounded
-  TTL, can be revoked, and are consumed atomically once with replay rejection.
-- Step 4 — Deterministic Request State Machine is complete and focused tests
-  pass. Explicit transitions enforce authentication before policy, policy
-  before approval, exact one-time approval for `CONFIRM`, permanent blocking
-  for `DENY`, and inert preparation for `ALLOW`.
-- Phase 3A implementation, validation, diff review, report, and fresh-context
-  handoff are complete. Phase 3B execution is not implemented.
+- The pinned Hermes execution surface was audited without modifying upstream.
+- A thin adapter preserves exact provider/model/fallback/tool/session/arguments
+  and dispatches through Hermes middleware and native tool registry.
+- The final gate revalidates identity, TTL, fingerprint, approval, capability
+  version/health, upstream denial, and route immediately before execution.
+- Lifecycle supports `prepared -> executing -> completed`, with terminal
+  `denied`/`failed` and rejection of repeated execution.
+- A private bounded JSONL ledger records allowlisted security metadata only.
+- A foreground local runtime composes IPC, authentication, policy, approvals,
+  execution, Hermes adapter, audit, readiness, and graceful shutdown.
+- Phase 3B code, adversarial tests, documentation, and validation are complete.
 
 ## Phase 2 baseline
 
@@ -35,6 +27,18 @@ Last updated: 2026-09-13 ICT
   are pinned as optional development dependencies.
 - No provider credentials, paid requests, local models, SwiftUI, voice, or
   computer-control implementation were added.
+
+## Phase 3B sequential status
+
+| Step | Status | Evidence |
+|---|---|---|
+| 1 — Hermes surface audit | COMPLETE | Pinned `AIAgent` constructor and `invoke_tool` dispatch inspected statically. |
+| 2 — Execution adapter | COMPLETE | Exact translation, internal gate authority, normalized results, and deterministic fake tests. |
+| 3 — Final execution gate | COMPLETE | Fresh policy/health/fingerprint/approval/route checks and fail-closed drift tests. |
+| 4 — Lifecycle | COMPLETE | Explicit executing/completed transitions plus terminal and duplicate rejection tests. |
+| 5 — Audit ledger | COMPLETE | Metadata allowlist, private modes, hashed approval reference, bounded retention, and event-sequence tests. |
+| 6 — Runtime service | COMPLETE | User-local AF_UNIX composition, readiness, stale recovery, and graceful shutdown tests. |
+| 7 — Closeout | COMPLETE | JL validation, secret/diff/pin/submodule checks, report, and fresh-context handoff. |
 
 ## Phase 3A sequential status
 
@@ -59,7 +63,7 @@ Last updated: 2026-09-13 ICT
 | 7 — Validation | COMPLETE | 30 JL tests, Ruff, `ty`, dependency check, source pin, secret scan, and diff checks pass. Commit `1064dd6`. |
 | 8 — Documentation and handoff | COMPLETE | Phase 2 report/handoff and contract status updates prepared for a fresh Phase 3 context. |
 
-## Phase 3A validation summary
+## Phase 3B validation summary
 
 The final lightweight validation uses a temporary development environment and
 runs sequentially:
@@ -74,12 +78,14 @@ git -C upstream/hermes-agent status --short
 git diff --check
 ```
 
-Result: 54 tests passed; Ruff, `ty`, dependency, pin, secret-pattern, submodule,
-and diff checks passed. The approximately 41,000-test Hermes suite was not run.
+Result: 74 tests passed; Ruff, `ty`, dependency, pin, secret-pattern,
+submodule, and diff checks passed. Tests make no live provider or paid calls.
+The approximately 41,000-test Hermes suite was not run.
 
 ## Next action
 
-Phase 3A stops at an inert, policy-approved Hermes invocation reference. Do not
-start Phase 3B or add Hermes execution until its scope is explicitly approved.
-The native approval surface, Keychain integration, audit UI, SwiftUI, voice,
-computer control, LaunchAgent, and local models remain out of scope.
+Phase 3B is complete. Do not start Phase 4 without a new explicit brief. The
+recommended next boundary is a native macOS lifecycle/consent client that uses
+the existing authenticated IPC and never receives approval-issuance authority
+through untrusted request payloads. Keychain, SwiftUI, voice, computer control,
+LaunchAgent, local models, and audit UI remain deferred.
