@@ -74,6 +74,48 @@ class AuditLedgerTests(unittest.TestCase):
         )
         self.assertLessEqual(self.path.stat().st_size, 4096)
 
+    def test_safe_activity_exposes_only_ui_allowlist(self) -> None:
+        ledger = AuditLedger(self.path)
+        ledger.record(
+            "execution_completed",
+            request_id="request-secret",
+            caller_id="private-caller",
+            session_id="private-session",
+            capability_id="core.hermes.files",
+            action_class=("read-only",),
+            policy_decision="may-proceed",
+            fingerprint_reference="f" * 64,
+            approval_id_reference="a" * 64,
+            approval_consumed=True,
+            provider="private-provider",
+            model="private-model",
+        )
+
+        activity = ledger.safe_activity()[0]
+
+        self.assertEqual(
+            set(activity),
+            {
+                "timestamp",
+                "capability_id",
+                "action_class",
+                "policy_decision",
+                "execution_status",
+            },
+        )
+        self.assertEqual(activity["execution_status"], "completed")
+        rendered = str(activity)
+        for private in (
+            "request-secret",
+            "private-caller",
+            "private-session",
+            "private-provider",
+            "private-model",
+            "f" * 64,
+            "a" * 64,
+        ):
+            self.assertNotIn(private, rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

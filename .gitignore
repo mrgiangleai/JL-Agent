@@ -28,6 +28,7 @@ htmlcov/
 
 # JavaScript / desktop artifacts
 node_modules/
+.build/
 dist/
 build/
 release/

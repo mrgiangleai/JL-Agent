@@ -20,6 +20,7 @@ from .permissions import DecisionOutcome
 from .router import RoutingError
 
 if TYPE_CHECKING:
+    from .consent import ConsentCoordinator
     from .execution import ExecutionGate
 
 
@@ -89,6 +90,8 @@ class RequestLifecycle:
 
 
 RequestDecoder = Callable[[IPCRequestEnvelope], ControlRequest]
+StatusProvider = Callable[[], Mapping[str, Any]]
+ActivityReader = Callable[[int], tuple[Mapping[str, Any], ...]]
 
 
 class SecureControlRequestHandler:
@@ -102,12 +105,18 @@ class SecureControlRequestHandler:
         control_plane: JLControlPlane,
         request_decoder: RequestDecoder,
         execution_gate: ExecutionGate | None = None,
+        consent_coordinator: ConsentCoordinator | None = None,
+        status_provider: StatusProvider | None = None,
+        activity_reader: ActivityReader | None = None,
     ) -> None:
         self.credentials = credentials
         self.approvals = approvals
         self.control_plane = control_plane
         self.request_decoder = request_decoder
         self.execution_gate = execution_gate
+        self.consent_coordinator = consent_coordinator
+        self.status_provider = status_provider
+        self.activity_reader = activity_reader
 
     def __call__(self, envelope: IPCRequestEnvelope) -> IPCResponseEnvelope:
         lifecycle = RequestLifecycle(envelope.request_id)
@@ -125,6 +134,25 @@ class SecureControlRequestHandler:
                 session_id=envelope.session_id,
             )
 
+        if envelope.operation == "status":
+            if envelope.payload or self.status_provider is None:
+                lifecycle.transition(RequestState.FAILED)
+                return self._failure(envelope, lifecycle, "malformed_payload")
+            return IPCResponseEnvelope.success(
+                envelope.request_id, dict(self.status_provider())
+            )
+        if envelope.operation == "activity":
+            try:
+                limit = _activity_limit(envelope.payload)
+                if self.activity_reader is None:
+                    raise ValueError("activity is unavailable")
+                events = [dict(item) for item in self.activity_reader(limit)]
+            except (OSError, TypeError, ValueError):
+                lifecycle.transition(RequestState.FAILED)
+                return self._failure(envelope, lifecycle, "activity_unavailable")
+            return IPCResponseEnvelope.success(
+                envelope.request_id, {"events": events}
+            )
         if envelope.operation not in {"prepare", "execute"}:
             lifecycle.transition(RequestState.FAILED)
             return self._failure(envelope, lifecycle, "unsupported_operation")
@@ -216,6 +244,35 @@ class SecureControlRequestHandler:
 
         lifecycle.transition(RequestState.AWAITING_APPROVAL)
         if approval_id is None:
+            if (
+                self.consent_coordinator is not None
+                and execution_context is not None
+            ):
+                try:
+                    pending = self.consent_coordinator.register(
+                        request_id=envelope.request_id,
+                        request=request,
+                        checked=checked,
+                        lifecycle=lifecycle,
+                        execution_context=execution_context,
+                    )
+                except (RuntimeError, ValueError):
+                    lifecycle.transition(RequestState.DENIED)
+                    return self._failure(
+                        envelope, lifecycle, "consent_unavailable"
+                    )
+                return IPCResponseEnvelope.success(
+                    envelope.request_id,
+                    {
+                        "state": lifecycle.state.value,
+                        "history": [
+                            state.value for state in lifecycle.history
+                        ],
+                        "consent": pending.presentation(
+                            now=self.consent_coordinator.now()
+                        ),
+                    },
+                )
             return IPCResponseEnvelope.success(
                 envelope.request_id,
                 {
@@ -283,6 +340,15 @@ def _approval_id(payload: Mapping[str, Any]) -> str | None:
         return None
     if not isinstance(value, str) or not value or len(value) > 512:
         raise ValueError("approval_id must be bounded text")
+    return value
+
+
+def _activity_limit(payload: Mapping[str, Any]) -> int:
+    if set(payload).difference({"limit"}):
+        raise ValueError("activity payload has unknown fields")
+    value = payload.get("limit", 50)
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 100:
+        raise ValueError("activity limit must be between 1 and 100")
     return value
 
 

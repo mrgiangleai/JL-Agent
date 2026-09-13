@@ -91,6 +91,24 @@ class AuditLedger:
             lines = self.path.read_bytes().splitlines()
         return tuple(json.loads(line) for line in lines if line)
 
+    def safe_activity(self, limit: int = 50) -> tuple[dict[str, object], ...]:
+        """Return a bounded UI projection with no identity or secret references."""
+        if not 1 <= limit <= 100:
+            raise ValueError("activity limit must be between 1 and 100")
+        events = self.read()[-limit:]
+        projected: list[dict[str, object]] = []
+        for item in reversed(events):
+            projected.append(
+                {
+                "timestamp": _text(item.get("timestamp")),
+                "capability_id": _text(item.get("capability_id")),
+                "action_class": _strings(item.get("action_class")),
+                "policy_decision": _text(item.get("policy_decision")),
+                "execution_status": _execution_status(_text(item.get("event"))),
+                }
+            )
+        return tuple(projected)
+
     def _prepare_storage(self) -> None:
         self.path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
         parent = self.path.parent.stat()
@@ -137,3 +155,24 @@ class AuditLedger:
             except FileNotFoundError:
                 pass
             raise
+
+
+def _text(value: object) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _strings(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)][:8]
+
+
+def _execution_status(event: str) -> str:
+    return {
+        "execution_prepared": "prepared",
+        "execution_started": "executing",
+        "execution_completed": "completed",
+        "execution_denied": "denied",
+        "execution_failed": "failed",
+        "request_denied": "denied",
+    }.get(event, "unknown")
