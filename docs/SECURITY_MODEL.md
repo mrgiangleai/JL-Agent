@@ -116,11 +116,14 @@ external sends, destructive actions, financial attempts, and sandbox failures.
 A user can disable a capability, revoke credentials, stop the runtime, and
 export a sanitized audit summary. Raw secrets are never included in exports.
 
-## Known Phase 1 limitations
+## Current implementation limitations
 
-This document is a target policy; the JL enforcement layer and native approval
-surface do not exist yet. Hermes' approval checks are useful defense in depth
-but, per its own `SECURITY.md`, they are not containment. Until Phase 2 adds the
-JL policy gate, run the baseline only in an explicitly trusted workspace and do
-not enable unattended destructive, communication, credential, or financial
-actions.
+Phase 2 implements deterministic action classification, allow/confirm/deny
+decisions, descriptor-scope validation, upstream-denial preservation, and an
+exact-action approval fingerprint in `src/jl_agent/control/permissions.py`.
+The native approval surface, trusted approval issuance/expiry/consumption,
+authenticated local IPC, and OS/process containment do not exist yet. A
+`requires-confirmation` result is therefore a stop condition, not permission to
+execute. Hermes' approval checks remain defense in depth and are not
+containment. Continue to use an explicitly trusted workspace and do not enable
+unattended destructive, communication, credential, or financial actions.

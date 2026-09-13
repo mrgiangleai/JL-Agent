@@ -1,6 +1,7 @@
 # Model Router design
 
-Status: Phase 1 policy contract. It deliberately names no mandatory model.
+Status: Phase 2 deterministic contract implemented by
+`src/jl_agent/control/router.py`. It deliberately names no mandatory model.
 
 ## Boundary
 
@@ -70,8 +71,8 @@ Hermes.
 
 OpenJarvis' `src/openjarvis/engine/apple_fm.py` proves a viable Apple Foundation
 Models path on Apple Silicon/macOS 26+, but it requires Apple Intelligence,
-`apple-fm-sdk`, and full Xcode. Phase 2 should evaluate it as an isolated Hermes
-provider plugin or subprocess adapter; it is not a Phase 1 dependency and must
-degrade cleanly when unavailable.
+`apple-fm-sdk`, and full Xcode. Phase 2 did not add this route. A future phase
+may evaluate it as an isolated Hermes provider plugin or subprocess adapter; it
+must remain optional and degrade cleanly when unavailable.
 
 A non-normative configuration example is in `config/model-router.example.yaml`.

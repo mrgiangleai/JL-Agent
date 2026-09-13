@@ -1,6 +1,6 @@
 # Capability Registry design
 
-Status: Phase 1 interface contract. No runtime registry is implemented yet.
+Status: Phase 2 contract implemented by `src/jl_agent/control/registry.py`.
 
 ## Purpose
 
@@ -33,9 +33,12 @@ Recommended optional fields are `description`, `platforms`, `modalities`,
 ## Health state
 
 `health.state` is one of `unknown`, `starting`, `healthy`, `degraded`,
-`unavailable`, or `blocked`. A health check must be bounded by a timeout and
-must not trigger billable model calls, permission prompts, package installs, or
-destructive recovery. Health is observed state; `enabled` remains user policy.
+`unavailable`, `blocked`, `misconfigured`, or `disabled`. The last two make
+configuration failure and operator intent directly visible without conflating
+them with implementation availability. A health check must be bounded by a
+timeout and must not trigger billable model calls, permission prompts, package
+installs, or destructive recovery. Health is observed state; descriptor
+`enabled` remains the persisted operator policy.
 
 ## Permission scopes
 

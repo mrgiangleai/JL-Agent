@@ -1,68 +1,54 @@
-# Phase 1 progress
+# Phase 2 progress
 
-Last updated: 2026-09-12 16:15 ICT
+Last updated: 2026-09-13 17:18 ICT
 
-## Recovered state
+## Current state
 
-- Branch: `main`, tracking `origin/main`; original history is intact.
-- No installer, build, typecheck, or test process is currently running.
-- Hermes is present as a clean Git submodule at
-  `044a77b3b6af4ce16138d42762f812a20b9f7a89`; `.gitmodules` points to the
-  official repository.
-- Hermes, OpenJarvis, and PersonalJarvis source/license audits are complete.
-  OpenJarvis and PersonalJarvis were inspected from temporary source snapshots;
-  their dependencies were not installed.
-- Component decisions, architecture, Capability Registry, Model Router, security
-  model, third-party notice, configuration examples, and Phase 1 report are
-  finalized.
-- Hermes `0.21.2` was installed in a repository-local Python 3.13 environment
-  with the optional groups used by upstream CI. Import, CLI help, dependency,
-  YAML, shell syntax, secret-pattern, submodule, and blocking Ruff checks passed.
-- Upstream `ty check` completed without diagnostics during the prior run, but
-  its final exit code was not captured after the session handoff; a lightweight
-  sequential rerun remains pending.
-- The canonical per-file upstream suite was interrupted by the new execution
-  rule after more than 13,000 passing tests. It had recorded two failures. One
-  is confirmed as a macOS-only assumption in
-  `tests/computer_use/test_cua_no_overlay.py`: the generic full-suite test mocks
-  `/usr/bin/cua-driver` but the Darwin branch correctly requires a real signed
-  `CuaDriver.app`. The second failure output was truncated and must be recovered
-  with a narrow rerun or documented as unknown; the full heavy suite will not be
-  restarted while resources are constrained.
-
-## Resource state and cleanup decision
-
-- The external project volume had only about 4.6 GiB free after installation.
-- `.venv` occupied about 23 GiB of allocated space and the Hermes checkout about
-  24 GiB. The unusually high allocation is amplified by the volume's allocation
-  behavior across many small Python/source files.
-- System load was still decaying after the interrupted suite; no matching heavy
-  process remained.
-- Safe cleanup is complete. Only reproducible ignored state was removed:
-  `.venv`, `.jl-agent`, and bytecode/test/lint caches inside the Hermes
-  checkout. Source, documentation, Git history, and the pinned submodule were
-  preserved. Free space increased from about 4.6 GiB to about 90 GiB; the
-  submodule remains clean.
+- Phase 2 is complete through implementation, integration, lightweight
+  validation, and documentation.
+- Hermes remains the single core and is still a clean submodule at
+  `044a77b3b6af4ce16138d42762f812a20b9f7a89` (`0.21.2`).
+- JL owns only the control contracts under `src/jl_agent/control/`.
+- The runtime dependency set is one package: `PyYAML>=6.0,<7`. Ruff and `ty`
+  are pinned as optional development dependencies.
+- No provider credentials, paid requests, local models, SwiftUI, voice, or
+  computer-control implementation were added.
 
 ## Sequential phase status
 
-| Step | Status | Evidence / next action |
+| Step | Status | Evidence |
 |---|---|---|
-| 0 — Recover current state | COMPLETE | State recovered, generated artifacts cleaned, resources rechecked, source preserved. |
-| 1 — Hermes audit | COMPLETE | Recorded in `COMPONENT_MATRIX.md` and `PHASE1_REPORT.md`; representative source paths revalidated after recovery. |
-| 2 — OpenJarvis audit | COMPLETE | Existing snapshot commit and cited registry/routing/Apple FM paths revalidated; no dependency installation. |
-| 3 — PersonalJarvis audit | COMPLETE | Existing snapshot commit and cited voice/macOS/computer-use/safety paths revalidated; no dependency installation. |
-| 4 — Final component decisions | COMPLETE | All 34 matrix rows use a valid decision class; single-core architecture, six security classes, registry/router contracts, and no-SwiftUI boundary are consistency-checked. |
-| 5 — Prepare baseline structure | COMPLETE | Pinned clean submodule, JL-owned boundaries, bootstrap/config files, shell/YAML checks, and no-SwiftUI rule validated. |
-| 6 — Install/validate Hermes baseline | COMPLETE | Prior CI-extras installation, `pip check`, imports, CLI help, Ruff, and partial canonical suite are documented; arm64/macOS/Python compatibility revalidated statically. Generated environment was then removed to recover disk space. |
-| 7 — Fix baseline issues | COMPLETE | CI extras were added to dev bootstrap, pip cache and verification HOME are project-local, official submodule URL restored, and expensive-suite coverage gaps documented without overclaiming. |
-| 8 — Final Phase 1 review | COMPLETE | Documentation/diff/secret/generated-file reviews passed; baseline and documentation are committed logically. |
+| 1 — Capability Registry | COMPLETE | Strict schema-v1 YAML parser, immutable descriptors, duplicate-key/ID rejection, focused fixture tests. Commit `4f00221`. |
+| 2 — Hermes Capability Projection | COMPLETE | Read-only projection for files, terminal, browser, memory, and MCP; validates pinned source identity and static availability without importing Hermes. Commit `cb80f1c`. |
+| 3 — Health Monitor | COMPLETE | Cheap deterministic `healthy`, `degraded`, `unavailable`, `misconfigured`, and `disabled` evaluation; no service startup. Commit `bf5d03c`. |
+| 4 — Permission / Risk Engine | COMPLETE | Six action classes, allow/confirm/deny decisions, descriptor-scope enforcement, upstream-denial preservation, and exact-action fingerprints. Commit `2f0cc11`. |
+| 5 — Deterministic Model Router | COMPLETE | Rule-based hard filtering, task-profile ordering, privacy/locality/cost checks, explicit selection, and bounded fallback using fake candidates. Commit `721da01`. |
+| 6 — Integration | COMPLETE | End-to-end preparation path reaches a Hermes tool/provider reference without invoking or duplicating the Hermes loop. Commit `0ca5bbe`. |
+| 7 — Validation | COMPLETE | 30 JL tests, Ruff, `ty`, dependency check, source pin, secret scan, and diff checks pass. Commit `1064dd6`. |
+| 8 — Documentation and handoff | COMPLETE | Phase 2 report/handoff and contract status updates prepared for a fresh Phase 3 context. |
+
+## Validation summary
+
+The final lightweight validation uses a temporary development environment and
+runs sequentially:
+
+```bash
+python -m unittest discover -s tests
+ruff check src tests
+ty check
+python -m pip check
+git submodule status
+git -C upstream/hermes-agent status --short
+git diff --check
+```
+
+Result: 30 tests passed; lint, type, dependency, pin, secret-pattern, and diff
+checks passed. The approximately 41,000-test Hermes suite was not run.
 
 ## Next action
 
-Phase 1 is complete. Baseline commit `a303939` and audit/report commit
-`37061b5` were pushed to `origin/main`; the final handoff is in
-`PHASE1_HANDOFF.md`. Begin Phase 2 only from its recommended starting point and
-the ordered scope in `PHASE1_REPORT.md`. Do not treat the partial ~41,000-test
-run as a pass; rerun the supported Linux full lane and official macOS-only lane
-before changing the Hermes pin.
+Read `docs/PHASE2_HANDOFF.md` in a fresh context before Phase 3. Do not add a
+second agent loop or execute tools from a future native client. The next
+security-critical gap is consumption of short-lived, exact-action approvals
+through authenticated local IPC; it should be scoped by the Phase 3 brief
+before implementation begins.
