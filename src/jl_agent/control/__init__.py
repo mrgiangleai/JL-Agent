@@ -1,5 +1,12 @@
 """Stable control-layer contracts shared by JL integrations."""
 
+from .control_plane import (
+    ControlPathResult,
+    ControlPlaneError,
+    ControlRequest,
+    HermesInvocationProjection,
+    JLControlPlane,
+)
 from .health import HealthAssessment, HealthMonitor, ProbeOutcome
 from .hermes_projection import (
     HermesIdentity,
@@ -45,6 +52,9 @@ __all__ = [
     "CapabilityRegistry",
     "CapabilityType",
     "ConfigurationRequirements",
+    "ControlPathResult",
+    "ControlPlaneError",
+    "ControlRequest",
     "CostClass",
     "DecisionOutcome",
     "DeterministicModelRouter",
@@ -55,9 +65,11 @@ __all__ = [
     "HealthMonitor",
     "HealthState",
     "HermesIdentity",
+    "HermesInvocationProjection",
     "HermesProjection",
     "HermesProjectionError",
     "HermesProjectionResult",
+    "JLControlPlane",
     "ModelCandidate",
     "ProbeOutcome",
     "PermissionDecision",
