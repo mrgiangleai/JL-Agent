@@ -119,6 +119,33 @@ class JLControlPlaneTests(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "health does not allow routing"):
             self.control_plane.prepare(request)
 
+    def test_disabled_computer_use_capability_fails_closed(self) -> None:
+        control_plane = JLControlPlane(
+            projection=HermesProjection(HERMES_ROOT),
+            router=DeterministicModelRouter(
+                RouterPolicy.from_file(ROUTER_FIXTURE)
+            ),
+            trusted_probe_provider=lambda _capability_id: ProbeOutcome(
+                HealthState.DISABLED, "operator disabled computer use"
+            ),
+        )
+        request = ControlRequest(
+            capability_id="core.hermes.computer-use",
+            action=ActionProposal(
+                action="computer_use",
+                normalized_arguments={"action": "capture", "mode": "ax"},
+                requested_permissions=("screen.capture",),
+            ),
+            route=RouteRequest(
+                category=TaskCategory.SIMPLE,
+                required_abilities=frozenset({"text", "tool-calling"}),
+            ),
+            candidates=(self.candidate,),
+        )
+
+        with self.assertRaisesRegex(Exception, "disabled"):
+            control_plane.prepare(request)
+
 
 if __name__ == "__main__":
     unittest.main()

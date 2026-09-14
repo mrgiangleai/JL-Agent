@@ -105,7 +105,15 @@ class NativeClientSurfaceTests(unittest.TestCase):
 
     def test_native_client_has_no_direct_hermes_execution_surface(self) -> None:
         native_root = ROOT / "macos-app" / "Sources"
-        forbidden = ("invoke_tool", "run_agent", "upstream/hermes-agent")
+        forbidden = (
+            "invoke_tool",
+            "run_agent",
+            "upstream/hermes-agent",
+            "CGEvent",
+            "AXUIElement",
+            "CGWindowListCreateImage",
+            "screencapture",
+        )
         for source in native_root.rglob("*.swift"):
             if "JLAgentNativeTests" in source.parts:
                 continue

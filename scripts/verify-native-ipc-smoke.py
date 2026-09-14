@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic Swift-to-Python protocol-v1 AF_UNIX consent smoke test."""
+"""Deterministic Swift-to-Python Phase 4B IPC and computer-use proof."""
 
 from __future__ import annotations
 
@@ -30,9 +30,11 @@ from jl_agent.control.execution_adapter import (  # noqa: E402
     HermesRuntimeRequest,
     HermesRuntimeResult,
 )
+from jl_agent.control.health import ProbeOutcome  # noqa: E402
 from jl_agent.control.hermes_projection import HermesProjection  # noqa: E402
 from jl_agent.control.ipc import UnixSocketServer  # noqa: E402
 from jl_agent.control.request_state import SecureControlRequestHandler  # noqa: E402
+from jl_agent.control.registry import HealthState  # noqa: E402
 from jl_agent.control.router import (  # noqa: E402
     DeterministicModelRouter,
     RouterPolicy,
@@ -62,11 +64,11 @@ def main() -> int:
         raise SystemExit("native test binary does not exist")
     if (
         runtime_root.parent != Path("/private/tmp")
-        or not runtime_root.name.startswith("jl-agent-phase4a-")
+        or not runtime_root.name.startswith("jl-agent-phase4b-")
         or runtime_root.exists()
     ):
         raise SystemExit(
-            "runtime root must be a new /private/tmp/jl-agent-phase4a-* path"
+            "runtime root must be a new /private/tmp/jl-agent-phase4b-* path"
         )
 
     identifier = uuid.uuid4().hex
@@ -91,6 +93,11 @@ def main() -> int:
         control_plane = JLControlPlane(
             projection=HermesProjection(ROOT / "upstream" / "hermes-agent"),
             router=DeterministicModelRouter(RouterPolicy(max_attempts=2)),
+            trusted_probe_provider=lambda capability_id: (
+                ProbeOutcome(HealthState.HEALTHY, "deterministic fake driver")
+                if capability_id == "core.hermes.computer-use"
+                else None
+            ),
         )
         audit = AuditLedger(paths.audit)
         gate = ExecutionGate(
@@ -109,6 +116,30 @@ def main() -> int:
                 "transport": "AF_UNIX",
                 "hermes_revision": "044a77b3b6af4ce16138d42762f812a20b9f7a89",
                 "consent_available": True,
+                "computer_use": {
+                    "enabled": True,
+                    "health": "healthy",
+                    "ready": True,
+                    "platform_supported": True,
+                    "driver_available": True,
+                    "driver_contract_ready": True,
+                    "driver_version": "0.20.1-fake",
+                    "detail": "deterministic fake driver",
+                    "permissions": [
+                        {
+                            "kind": "accessibility",
+                            "state": "granted",
+                            "explanation": "Required for AX inspection and input.",
+                            "settings_url": "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                        },
+                        {
+                            "kind": "screenRecording",
+                            "state": "granted",
+                            "explanation": "Required for screen pixels.",
+                            "settings_url": "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+                        },
+                    ],
+                },
             }
 
         normal_handler = SecureControlRequestHandler(
@@ -143,8 +174,15 @@ def main() -> int:
             check=True,
             timeout=20,
         )
-        if len(fake_runtime.requests) != 1:
-            raise RuntimeError("native smoke did not reach fake Hermes exactly once")
+        if len(fake_runtime.requests) != 2:
+            raise RuntimeError("native smoke did not reach both fake Hermes proofs")
+        computer_request = fake_runtime.requests[1]
+        if (
+            computer_request.allowed_tool != "computer_use"
+            or computer_request.enabled_toolsets != ("computer_use",)
+            or '"action":"capture"' not in computer_request.arguments_json
+        ):
+            raise RuntimeError("native computer-use proof bypassed the exact Hermes tool")
     finally:
         if service is not None:
             service.shutdown()
@@ -156,7 +194,7 @@ def main() -> int:
             timeout=20,
         )
         shutil.rmtree(runtime_root, ignore_errors=True)
-    print("Swift client and Python runtime IPC smoke passed")
+    print("Swift client, Python runtime, and fake-Hermes computer-use proof passed")
     return 0
 
 

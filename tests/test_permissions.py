@@ -124,9 +124,20 @@ class PermissionRiskEngineTests(unittest.TestCase):
             self.capability,
             self.proposal(normalized_arguments={"a": 1, "b": 3}),
         )
+        changed_target = self.engine.evaluate(
+            self.capability,
+            self.proposal(
+                normalized_arguments={"a": 1, "b": 2},
+                resolved_target="/workspace/other",
+                foreground_app="com.apple.Safari",
+            ),
+        )
 
         self.assertEqual(first.binding_fingerprint, reordered.binding_fingerprint)
         self.assertNotEqual(first.binding_fingerprint, changed.binding_fingerprint)
+        self.assertNotEqual(
+            first.binding_fingerprint, changed_target.binding_fingerprint
+        )
 
     def test_computer_use_requires_authoritative_base_scope(self) -> None:
         capability = HermesProjection(ROOT / "upstream" / "hermes-agent").project().registry.get(
@@ -191,6 +202,19 @@ class PermissionRiskEngineTests(unittest.TestCase):
         self.assertEqual(exact.outcome, DecisionOutcome.REQUIRES_CONFIRMATION)
         self.assertEqual(missing_target.outcome, DecisionOutcome.MUST_BE_DENIED)
         self.assertEqual(unattended.outcome, DecisionOutcome.MUST_BE_DENIED)
+
+        no_consent = self.engine.evaluate(
+            capability,
+            self.proposal(
+                action="computer_use",
+                normalized_arguments={"action": "click", "app": "TextEdit"},
+                requested_permissions=("input.control",),
+                resolved_target="TextEdit",
+                foreground_app="JL Agent",
+                approval_surface_available=False,
+            ),
+        )
+        self.assertEqual(no_consent.outcome, DecisionOutcome.MUST_BE_DENIED)
 
     def test_computer_use_preserves_stricter_effect_classes(self) -> None:
         capability = HermesProjection(ROOT / "upstream" / "hermes-agent").project().registry.get(

@@ -101,6 +101,21 @@ class HermesExecutionAdapterTests(unittest.TestCase):
         self.assertEqual(result.error_category, ExecutionErrorCategory.INVALID_REQUEST)
         self.assertEqual(runtime.requests, [])
 
+        computer = projection(
+            capability_id="core.hermes.computer-use",
+            entrypoint_address="computer_use",
+            action="computer_use",
+            arguments_json='{"action":"click","app":"TextEdit"}',
+        )
+        forged_computer = _AuthorizedHermesCommand(
+            computer, "request-computer", object()
+        )
+        self.assertEqual(
+            adapter._execute(forged_computer).error_category,
+            ExecutionErrorCategory.POLICY_DENIED,
+        )
+        self.assertEqual(runtime.requests, [])
+
     def test_aia_agent_runtime_uses_hermes_exact_tool_dispatch(self) -> None:
         constructor: dict[str, object] = {}
         dispatched: dict[str, object] = {}

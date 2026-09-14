@@ -123,9 +123,49 @@ enum NativeContractTests {
     )
     try check(result.state == "completed", "execution did not complete")
     try check(result.output == "native-ipc-smoke-ok", "unexpected fake output")
+
+    var computerDraft = RequestDraft()
+    computerDraft.capabilityID = "core.hermes.computer-use"
+    computerDraft.action = "computer_use"
+    computerDraft.argumentsJSON = "{\"action\":\"capture\",\"mode\":\"ax\"}"
+    computerDraft.requestedPermission = "screen.capture"
+    computerDraft.resolvedTarget = "frontmost-window"
+    computerDraft.targetWithinWorkspace = false
+    let computerRequestID = "native-computer-use-smoke-request"
+    let computerPrepared = try client.prepare(
+      draft: computerDraft,
+      requestID: computerRequestID,
+      callerID: caller,
+      sessionID: session
+    )
+    let computerConsent = try require(
+      computerPrepared.challenge,
+      "computer-use capture did not request protected-screen consent"
+    )
+    let computerSignature = try signer.sign(
+      challenge: computerConsent,
+      decision: .approve
+    )
+    let computerConsentState = try client.submitConsent(
+      challenge: computerConsent,
+      decision: .approve,
+      signature: computerSignature
+    )
+    try check(computerConsentState == "prepared", "computer-use consent did not prepare")
+    let computerResult = try client.execute(
+      draft: computerDraft,
+      requestID: computerRequestID,
+      callerID: caller,
+      sessionID: session
+    )
+    try check(computerResult.state == "completed", "computer-use proof did not complete")
+    try check(
+      computerResult.output == "native-ipc-smoke-ok",
+      "unexpected computer-use fake output"
+    )
     let activity = try client.activity(callerID: caller, sessionID: session)
-    try check(!activity.isEmpty, "safe activity was empty")
-    print("native protocol-v1 AF_UNIX consent smoke passed")
+    try check(activity.count >= 2, "safe activity omitted a proof")
+    print("native protocol-v1 AF_UNIX consent and computer-use smoke passed")
   }
 
   private static func missingCredentialFailsBeforeTransport() throws {
