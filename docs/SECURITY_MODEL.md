@@ -118,19 +118,28 @@ export a sanitized audit summary. Raw secrets are never included in exports.
 
 ## Current implementation limitations
 
-Phase 3B extends the authenticated Phase 3A boundary with a strict wire codec,
-single-use execution gate, final policy/health/route revalidation, thin Hermes
-adapter, explicit execution states, and a private bounded audit ledger. The
-foreground service listens only on a user-owned Unix socket and publishes a
-private readiness file. Trusted approval issuance is still internal; normal
-IPC cannot issue or activate an approval.
+Phase 4A adds a native Keychain-backed client credential, a Keychain RSA consent
+key, and a separate signature-authenticated consent socket. Normal IPC still
+cannot issue or activate approvals. The runtime creates an opaque, bounded,
+short-lived pending record after policy evaluation; only a signed approve or
+reject decision may resolve it. Fingerprints, approval TTLs, and approval tokens
+remain runtime-owned. Exact approval is consumed before preparation and the
+Phase 3B gate still performs final identity, policy, health, route, fingerprint,
+and replay checks.
 
-The file credential provider is interim storage, not Keychain. Approval and
-prepared state are memory-only and intentionally disappear on restart. The
-service is serial and has no LaunchAgent/supervisor or native consent UI. The
-adapter is compatible with the exact pinned Hermes surface and must be reviewed
-on a pin change. Tests use a deterministic fake and make no provider/network/
-paid calls. Hermes guardrails remain defense in depth, not OS containment;
-in-process tools still have the runtime user's privileges. Continue to use an
-explicitly trusted workspace and do not enable unattended destructive,
-communication, credential, or financial actions.
+The server-side bearer credential remains in its user-owned private runtime
+file; the app imports it into Keychain and does not display or log it. The
+native consent public key is enrolled through a user-owned private file and is
+pinned when the foreground runtime starts. This protects the protocol boundary,
+not arbitrary malicious code already executing as the same macOS user. Final
+code-signing identity enforcement and stronger process isolation remain future
+distribution work.
+
+Approval, pending-consent, and prepared state remain memory-only and disappear
+on restart. The service is serial on each endpoint and has no LaunchAgent or
+supervisor. The native validation route and fake adapter make no provider,
+network, or paid calls; a real Hermes tool execution still requires compatible
+local Hermes/provider configuration. Hermes guardrails remain defense in depth,
+not OS containment. Continue to use an explicitly trusted workspace and do not
+enable unattended destructive, communication, credential, or financial
+actions.

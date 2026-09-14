@@ -99,12 +99,22 @@ fallback. See `MODEL_ROUTER.md`.
 
 ### macOS Native App
 
-The future SwiftUI application owns native lifecycle, onboarding, microphone/
-screen/accessibility permission education, approval sheets, status, and local
-notifications. It is not allowed to execute tool calls directly. All actions
-flow through the runtime permission engine. Phase 3B adds only a foreground,
-user-local runtime service; it contains no SwiftUI or final macOS lifecycle
-management.
+The Phase 4A SwiftUI application is a native control/consent client. It owns a
+compact status, request/result, consent, and safe-activity surface. It speaks
+protocol v1 over bounded user-local Unix sockets, stores its bearer credential
+and consent private key in Keychain, and contains no Hermes imports, tool
+implementations, provider logic, or execution authority.
+
+Normal authenticated IPC exposes status, safe activity, prepare, and execute.
+A separate private consent socket accepts only an opaque pending-consent ID,
+an approve/reject decision, and a Keychain-key signature. The runtime owns the
+pending exact request and authoritative fingerprint, issues and consumes the
+one-time approval internally, and registers the prepared request with the
+existing gate. Approval tokens and client-computed fingerprints never cross a
+socket. See `PHASE4A_TRUST_BOUNDARY.md`.
+
+The foreground runtime remains operator-started. Phase 4A does not install a
+LaunchAgent, manage final distribution signing, or add voice/computer control.
 
 ### Execution Gate and Audit Ledger
 
@@ -120,7 +130,7 @@ full action arguments, user content, or model reasoning.
 
 ## Data and control flow
 
-1. A typed or spoken request enters through the native app or a reviewed Hermes
+1. A typed exact action enters through the native app or a reviewed Hermes
    gateway surface.
 2. The runtime attaches caller/session identity and queries enabled healthy
    capabilities.
@@ -135,6 +145,11 @@ For the Phase 3B direct execution boundary, steps 4-6 are constrained to one
 already prepared tool projection: JL performs final revalidation and Hermes'
 native invocation helper performs the exact tool dispatch. This is not a second
 conversation/agent loop.
+
+In Phase 4A, a confirmation path pauses after step 5. The runtime returns only
+safe consent presentation data and an opaque signed challenge. A trusted native
+decision resumes the stored exact request through the same preparation and
+execution gate; the app cannot replace that request while approving it.
 
 ## External component rule
 
@@ -151,7 +166,7 @@ second framework.
 adapters/                 JL translation boundaries
 config/                   non-secret examples
 docs/                     decisions and contracts
-macos-app/                future native-client boundary only
+macos-app/                native SwiftUI control/consent client
 mcp/                      reviewed MCP manifests/policy
 scripts/                  bootstrap and verification
 skills/                   JL-only skills

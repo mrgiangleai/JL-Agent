@@ -6,12 +6,13 @@ as the agent core and pins it as a Git submodule. JL Agent-specific policy,
 adapters, routing, health checks, and the future native macOS shell remain
 outside the upstream checkout.
 
-## Phase 2 control layer
+## Phase 4A control and consent client
 
-Phase 2 adds a small Python control package under `src/jl_agent/control/` for
-the Capability Registry, read-only Hermes projection, health evaluation,
-permission/risk decisions, deterministic model routing, and an inert integrated
-invocation plan. Hermes remains the sole runtime core.
+The Python runtime under `src/jl_agent/` owns authenticated local IPC, policy,
+health, exact approval, preparation, execution gating, and the thin Hermes
+adapter. The native SwiftUI client under `macos-app/` owns local status,
+Keychain-backed client credentials, exact consent UI, request/result display,
+and safe activity. Hermes remains the sole agent runtime core.
 
 Use Python 3.11-3.13:
 
@@ -23,8 +24,8 @@ python3 -m venv .venv
 .venv/bin/ty check
 ```
 
-See [the Phase 2 handoff](docs/PHASE2_HANDOFF.md) for the current source state,
-validation commands, safety invariants, and Phase 3 boundary.
+See [the Phase 4A handoff](docs/PHASE4A_HANDOFF.md) for the current source state,
+validation commands, safety invariants, and deferred Phase 4B boundary.
 
 ## Hermes baseline
 
@@ -56,8 +57,8 @@ keys, or modify the pinned upstream.
 - `skills/`: JL Agent-specific skills only; do not duplicate Hermes skills.
 - `config/`: committed examples and schemas; real credentials stay outside Git.
 - `docs/`: audit evidence, architecture, routing, registry, and security decisions.
-- `macos-app/`: boundary documentation for the future native app; no SwiftUI
-  implementation exists yet.
+- `macos-app/`: native SwiftUI protocol-v1 control/consent client; never an
+  agent runtime or Hermes execution surface.
 
 See [the Phase 1 report](docs/PHASE1_REPORT.md) for the audited commits,
 validation results, risks, and exact Phase 2 scope.

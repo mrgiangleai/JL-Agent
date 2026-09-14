@@ -1,8 +1,22 @@
-# Phase 3B progress
+# Phase 4A progress
 
-Last updated: 2026-09-13 ICT
+Last updated: 2026-09-14 ICT
 
-## Phase 3B current state
+## Phase 4A current state
+
+- A dependency-free SwiftUI app provides status, session, exact request,
+  result/error, trusted consent, credential maintenance, and safe activity.
+- The native client speaks bounded protocol-v1 AF_UNIX and stores its normal
+  IPC credential in Keychain.
+- A separate private consent socket verifies a Keychain RSA signature and can
+  resolve only a runtime-owned exact pending request.
+- Fingerprints, approval IDs, TTL, caller/session binding, and one-time
+  consumption remain runtime-owned; normal IPC still has no approval issuer.
+- Status and activity are authenticated, bounded, structured, and metadata-only.
+- Backend and native deterministic tests, lint/type checks, and release app
+  build/sign verification pass.
+
+## Phase 3B baseline
 
 - The pinned Hermes execution surface was audited without modifying upstream.
 - A thin adapter preserves exact provider/model/fallback/tool/session/arguments
@@ -40,6 +54,19 @@ Last updated: 2026-09-13 ICT
 | 6 — Runtime service | COMPLETE | User-local AF_UNIX composition, readiness, stale recovery, and graceful shutdown tests. |
 | 7 — Closeout | COMPLETE | JL validation, secret/diff/pin/submodule checks, report, and fresh-context handoff. |
 
+## Phase 4A sequential status
+
+| Step | Status | Evidence |
+|---|---|---|
+| 1 — Contract/trust audit | COMPLETE | Existing v1/auth/prepare/execute contracts inspected; separate signed exact-consent boundary documented before code. |
+| 2 — SwiftUI shell | COMPLETE | One functional status/request/result/activity window and exact native consent sheet. |
+| 3 — Native IPC client | COMPLETE | AF_UNIX-only framing, timeout/size bounds, strict structured response and identity validation. |
+| 4 — Keychain credential | COMPLETE | Private runtime credential import/refresh and Keychain-only normal client reads; explicit stopped-runtime rotation. |
+| 5 — Trusted consent | COMPLETE | Runtime-owned pending record, Keychain RSA signature, exact internal approval consumption, replay/change rejection. |
+| 6 — Request/result/activity | COMPLETE | ALLOW/CONFIRM/DENY, gate execution, result/error, and safe ledger projection. |
+| 7 — Validation | COMPLETE | 84 backend tests, 7 native tests, release app build/sign, and explicitly authorized cross-process consent smoke pass. |
+| 8 — Documentation/closeout | COMPLETE | Report, trust boundary, architecture/security updates, handoff, secret/pin/submodule checks, and Git closeout completed. |
+
 ## Phase 3A sequential status
 
 | Step | Status | Evidence |
@@ -63,7 +90,7 @@ Last updated: 2026-09-13 ICT
 | 7 — Validation | COMPLETE | 30 JL tests, Ruff, `ty`, dependency check, source pin, secret scan, and diff checks pass. Commit `1064dd6`. |
 | 8 — Documentation and handoff | COMPLETE | Phase 2 report/handoff and contract status updates prepared for a fresh Phase 3 context. |
 
-## Phase 3B validation summary
+## Phase 4A validation summary
 
 The final lightweight validation uses a temporary development environment and
 runs sequentially:
@@ -78,14 +105,16 @@ git -C upstream/hermes-agent status --short
 git diff --check
 ```
 
-Result: 74 tests passed; Ruff, `ty`, dependency, pin, secret-pattern,
-submodule, and diff checks passed. Tests make no live provider or paid calls.
-The approximately 41,000-test Hermes suite was not run.
+Result: 84 backend tests and 7 native tests passed; Ruff, `ty`, dependency and
+Swift format checks, SwiftUI debug/release compile, development app sign
+verification, and the explicitly authorized cross-process consent smoke passed.
+Tests make no live provider or paid calls. Secret, pin/submodule, Git sync, and
+artifact checks passed. The approximately 41,000-test Hermes suite was not run.
 
 ## Next action
 
-Phase 3B is complete. Do not start Phase 4 without a new explicit brief. The
-recommended next boundary is a native macOS lifecycle/consent client that uses
-the existing authenticated IPC and never receives approval-issuance authority
-through untrusted request payloads. Keychain, SwiftUI, voice, computer control,
-LaunchAgent, local models, and audit UI remain deferred.
+Phase 4A is complete. Do not begin Phase 4B without a new explicit brief. The
+recommended next boundary is production native lifecycle and stable signed-app
+consent-key enrollment; voice, computer control, LaunchAgent, local models,
+cloud services, accounts, telemetry, and distribution remain deferred until
+explicitly scoped.
