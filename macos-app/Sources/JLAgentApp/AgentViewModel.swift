@@ -210,15 +210,18 @@ final class AgentViewModel: ObservableObject {
     let callerID = callerID
     let sessionID = sessionID
     do {
-      let observed = try await Task.detached {
-        (
-          try client.voiceStatus(callerID: callerID, sessionID: sessionID),
-          try client.voiceEvents(callerID: callerID, sessionID: sessionID)
-        )
+      let status = try await Task.detached {
+        try client.voiceStatus(callerID: callerID, sessionID: sessionID)
       }.value
-      voiceStatus = observed.0
-      voiceEvents = observed.1
-      voiceMessage = Self.voiceSummary(observed.0)
+      voiceStatus = status
+      voiceMessage = Self.voiceSummary(status)
+      if status.ownedByCurrentSession {
+        voiceEvents = try await Task.detached {
+          try client.voiceEvents(callerID: callerID, sessionID: sessionID)
+        }.value
+      } else {
+        voiceEvents = []
+      }
     } catch {
       voiceMessage = display(error)
     }
