@@ -57,10 +57,31 @@ enum NativeContractTests {
     try computerUsePermissionStatusIsStructured()
     try computerUseRequestBindsScopesTargetAndForeground()
     try serverExecutionErrorRetainsAuthoritativeRuntimeSnapshot()
+    try expiredConsentIsRejectedLocally()
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     try missingEnrolledConsentKeyRequiresExplicitRotation()
-    print("11 native contract tests passed")
+    print("12 native contract tests passed")
+  }
+
+  private static func expiredConsentIsRejectedLocally() throws {
+    let clock = ContinuousClock()
+    let receivedAt = clock.now
+    let deadline = ConsentExpiryPolicy.deadline(
+      receivedAt: receivedAt,
+      expiresInSeconds: 30
+    )
+    try check(
+      !ConsentExpiryPolicy.isExpired(deadline: deadline, now: receivedAt),
+      "fresh consent was treated as expired"
+    )
+    try check(
+      ConsentExpiryPolicy.isExpired(
+        deadline: deadline,
+        now: receivedAt.advanced(by: .seconds(30))
+      ),
+      "expired consent remained submittable"
+    )
   }
 
   private static func serverExecutionErrorRetainsAuthoritativeRuntimeSnapshot() throws {

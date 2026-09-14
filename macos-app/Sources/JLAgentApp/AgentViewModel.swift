@@ -31,8 +31,10 @@ final class AgentViewModel: ObservableObject {
   private let credentials: KeychainCredentialProvider
   private let signer: ConsentSigningKey
   private let client: JLRuntimeClient
+  private let consentClock = ContinuousClock()
   private var activeRequestID: String?
   private var activeDraft: RequestDraft?
+  private var pendingConsentDeadline: ContinuousClock.Instant?
   private var initialized = false
 
   init(paths: RuntimePaths = RuntimePaths()) {
@@ -133,6 +135,8 @@ final class AgentViewModel: ObservableObject {
 
   func sendRequest() {
     guard !isWorking else { return }
+    pendingConsent = nil
+    pendingConsentDeadline = nil
     isWorking = true
     decision = "Evaluating"
     resultText = "Preparing request…"
@@ -158,6 +162,10 @@ final class AgentViewModel: ObservableObject {
         if let challenge = prepared.challenge {
           decision = "CONFIRM"
           resultText = "Native consent is required."
+          pendingConsentDeadline = ConsentExpiryPolicy.deadline(
+            receivedAt: consentClock.now,
+            expiresInSeconds: challenge.expiresInSeconds
+          )
           pendingConsent = challenge
           isWorking = false
         } else {
@@ -197,7 +205,19 @@ final class AgentViewModel: ObservableObject {
     decision consentDecision: ConsentDecision
   ) {
     guard !isWorking else { return }
+    guard let deadline = pendingConsentDeadline,
+      !ConsentExpiryPolicy.isExpired(deadline: deadline, now: consentClock.now)
+    else {
+      pendingConsent = nil
+      pendingConsentDeadline = nil
+      activeRequestID = nil
+      activeDraft = nil
+      decision = "DENY"
+      resultText = "consent_expired: use Send / Prepare to create a new request."
+      return
+    }
     pendingConsent = nil
+    pendingConsentDeadline = nil
     isWorking = true
     let signer = signer
     let client = client
@@ -304,9 +324,16 @@ final class AgentViewModel: ObservableObject {
 
   private func handleRequestError(_ error: Error) {
     if case RuntimeClientError.server(let code, _) = error,
-      ["policy_denied", "approval_denied", "consent_rejected"].contains(code)
+      ["policy_denied", "approval_denied", "consent_rejected", "consent_expired"].contains(
+        code)
     {
       decision = "DENY"
+      if code == "consent_expired" {
+        pendingConsent = nil
+        pendingConsentDeadline = nil
+        activeRequestID = nil
+        activeDraft = nil
+      }
     }
     resultText = display(error)
     isWorking = false

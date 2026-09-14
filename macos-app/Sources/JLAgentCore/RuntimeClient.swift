@@ -42,6 +42,22 @@ public enum RuntimeStatusSnapshotPolicy {
   }
 }
 
+public enum ConsentExpiryPolicy {
+  public static func deadline(
+    receivedAt: ContinuousClock.Instant,
+    expiresInSeconds: Int
+  ) -> ContinuousClock.Instant {
+    receivedAt.advanced(by: .seconds(max(0, expiresInSeconds)))
+  }
+
+  public static func isExpired(
+    deadline: ContinuousClock.Instant,
+    now: ContinuousClock.Instant
+  ) -> Bool {
+    now >= deadline
+  }
+}
+
 public struct PrepareResult: Equatable, Sendable {
   public let state: String
   public let challenge: ConsentChallenge?

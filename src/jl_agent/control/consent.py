@@ -196,10 +196,7 @@ class ConsentCoordinator:
                     "consent_not_found", "pending consent was not found"
                 ) from error
             record = self._current_locked(record, now)
-            if record.state is not ConsentState.PENDING:
-                raise ConsentError(
-                    "consent_replayed", f"consent is {record.state.value}"
-                )
+            self._require_pending_locked(record)
             if (
                 record.request_id != request_id
                 or record.caller_id != caller_id
@@ -222,10 +219,7 @@ class ConsentCoordinator:
                     "consent_not_found", "pending consent was not found"
                 ) from error
             record = self._current_locked(record, now)
-            if record.state is not ConsentState.PENDING:
-                raise ConsentError(
-                    "consent_replayed", f"consent is {record.state.value}"
-                )
+            self._require_pending_locked(record)
             state = (
                 ConsentState.APPROVED
                 if decision is ConsentDecision.APPROVE
@@ -234,6 +228,17 @@ class ConsentCoordinator:
             decided = replace(record, state=state)
             self._records[consent_id] = decided
             return decided
+
+    @staticmethod
+    def _require_pending_locked(record: PendingConsent) -> None:
+        if record.state is ConsentState.EXPIRED:
+            if record.lifecycle.state is RequestState.AWAITING_APPROVAL:
+                record.lifecycle.transition(RequestState.DENIED)
+            raise ConsentError("consent_expired", "consent has expired")
+        if record.state is not ConsentState.PENDING:
+            raise ConsentError(
+                "consent_replayed", f"consent is {record.state.value}"
+            )
 
     def _expire_locked(self, now: float) -> None:
         for record in tuple(self._records.values()):
@@ -372,6 +377,13 @@ class TrustedConsentRequestHandler:
                 session_id=envelope.session_id,
             )
         except ConsentError as error:
+            if error.code == "consent_expired":
+                self.execution_gate.record_boundary_denial(
+                    request_id=envelope.request_id,
+                    caller_id=envelope.caller_id,
+                    session_id=envelope.session_id,
+                    error_category=error.code,
+                )
             return _failure(envelope, error.code)
         except ValueError:
             return _failure(envelope, "malformed_payload")
@@ -389,6 +401,13 @@ class TrustedConsentRequestHandler:
         try:
             decided = self.coordinator.decide(consent_id, decision)
         except ConsentError as error:
+            if error.code == "consent_expired":
+                self.execution_gate.record_boundary_denial(
+                    request_id=envelope.request_id,
+                    caller_id=envelope.caller_id,
+                    session_id=envelope.session_id,
+                    error_category=error.code,
+                )
             return _failure(envelope, error.code)
         if decision is ConsentDecision.REJECT:
             decided.lifecycle.transition(RequestState.DENIED)

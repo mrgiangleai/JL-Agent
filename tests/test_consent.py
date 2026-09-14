@@ -15,6 +15,7 @@ from jl_agent.control.audit import AuditLedger
 from jl_agent.control.auth import FileCredentialProvider
 from jl_agent.control.consent import (
     ConsentCoordinator,
+    ConsentState,
     RSAPKCS1v15SHA256Verifier,
     TrustedConsentRequestHandler,
 )
@@ -30,7 +31,7 @@ from jl_agent.control.hermes_projection import HermesProjection
 from jl_agent.control.ipc import PROTOCOL_VERSION, IPCRequestEnvelope
 from jl_agent.control.permissions import ActionProposal
 from jl_agent.control.registry import HealthState
-from jl_agent.control.request_state import SecureControlRequestHandler
+from jl_agent.control.request_state import RequestState, SecureControlRequestHandler
 from jl_agent.control.router import (
     CostClass,
     DeterministicModelRouter,
@@ -68,7 +69,8 @@ class TrustedNativeConsentTests(unittest.TestCase):
         self.credentials = FileCredentialProvider(runtime_root / "ipc.credential")
         self.credential = self.credentials.load_or_create()
         self.approvals = OneTimeApprovalStore()
-        self.coordinator = ConsentCoordinator()
+        self.now = 1000.0
+        self.coordinator = ConsentCoordinator(clock=lambda: self.now)
         self.control_plane = JLControlPlane(
             projection=HermesProjection(ROOT / "upstream" / "hermes-agent"),
             router=DeterministicModelRouter(RouterPolicy(max_attempts=2)),
@@ -216,6 +218,26 @@ class TrustedNativeConsentTests(unittest.TestCase):
         self.assertTrue(rejected.ok)
         self.assertEqual(rejected.result["state"], "denied")  # type: ignore[index]
         self.assertEqual(execution.error_code, "stale_preparation")
+        self.assertEqual(self.runtime.requests, [])
+
+    def test_expired_consent_denies_without_approval_or_execution(self) -> None:
+        consent = self.prepare_consent()
+        self.now += 31.0
+
+        expired = self.trusted(self.consent_envelope(consent, "approve"))
+
+        self.assertEqual(expired.error_code, "consent_expired")
+        record = self.coordinator._records[str(consent["consent_id"])]
+        self.assertEqual(record.state, ConsentState.EXPIRED)
+        self.assertEqual(record.lifecycle.state, RequestState.DENIED)
+        self.assertEqual(self.runtime.requests, [])
+        self.assertEqual(len(self.approvals._records), 0)
+        event = self.audit.read()[-1]
+        self.assertEqual(event["event"], "request_denied")
+        self.assertEqual(event["error_category"], "consent_expired")
+
+        replay = self.trusted(self.consent_envelope(consent, "approve"))
+        self.assertEqual(replay.error_code, "consent_expired")
         self.assertEqual(self.runtime.requests, [])
 
     def test_wrong_identity_wildcard_and_invalid_signature_fail_closed(self) -> None:
