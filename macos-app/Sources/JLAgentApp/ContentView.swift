@@ -86,12 +86,19 @@ struct ContentView: View {
               Text("Computer Use")
                 .font(.headline)
               Spacer()
-              Text(status.health)
-                .foregroundStyle(status.ready ? .green : .orange)
+              Text(status.executionReady ? "ready" : status.health)
+                .foregroundStyle(status.executionReady ? .green : .orange)
+              Button("Recheck") { viewModel.refreshStatus() }
             }
+            Text("Foreground runtime PID: \(viewModel.runtimePIDText)")
+              .font(.caption.monospaced())
+              .foregroundStyle(.secondary)
             Text(driverSummary(status))
               .font(.caption)
               .foregroundStyle(.secondary)
+            Text(status.blockedReason)
+              .font(.caption)
+              .foregroundStyle(status.executionReady ? .green : .orange)
             ForEach(status.permissions) { permission in
               HStack(alignment: .top, spacing: 10) {
                 Text(permissionLabel(permission.kind))
@@ -161,7 +168,11 @@ struct ContentView: View {
         + "granting permissions."
     }
     let version = status.driverVersion.map { " \($0)" } ?? ""
-    return "cua-driver\(version): \(status.detail)"
+    let identity =
+      status.driverIdentityReady
+      ? "signed \(status.driverBundleID ?? "CuaDriver") / \(status.driverTeamID ?? "team")"
+      : "CuaDriver.app identity unavailable"
+    return "cua-driver\(version), \(identity): \(status.detail)"
   }
 }
 

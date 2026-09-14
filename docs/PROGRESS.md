@@ -1,6 +1,24 @@
-# Phase 4B progress
+# Phase 4C progress
 
 Last updated: 2026-09-14 ICT
+
+## Phase 4C current state
+
+- Exact pinned Hermes and official Cua source/release contracts were re-audited.
+- A version/checksum/signature-pinned Cua Driver provisioning workflow passes
+  repository-only preflight without installing or prompting for TCC.
+- Runtime readiness now verifies executable reachability, full manifest,
+  executable-derived signed app identity, both TCC grants, Hermes pin, JL
+  policy/auth, and current consent enrollment.
+- Native onboarding shows runtime PID, Cua identity/version, blocked reason,
+  per-permission Settings actions, restart guidance, and Recheck.
+- The foreground lifecycle has a stable repository entry point and read-only
+  status command; duplicate ownership, stale recovery, and graceful shutdown
+  remain fail-closed.
+- Consent key loss no longer silently creates a replacement enrollment; explicit
+  rotation and runtime restart remain required.
+- The current host is intentionally stopped before Cua installation/TCC. No live
+  GUI smoke test has run.
 
 ## Phase 4B current state
 

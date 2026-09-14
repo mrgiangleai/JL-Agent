@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import socket
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +12,9 @@ from jl_agent.control.auth import FileCredentialProvider
 from jl_agent.runtime_service import (
     JLRuntimeService,
     RuntimePaths,
+    _consent_enrollment_is_current,
     build_runtime_service,
+    inspect_runtime_lifecycle,
     main,
 )
 
@@ -89,6 +94,38 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
         rotated = provider.load_or_create()
         self.assertNotEqual(rotated, original)
         self.assertTrue(provider.authenticate(rotated))
+
+    def test_consent_enrollment_drift_fails_closed(self) -> None:
+        enrolled = self.paths.root / "native-consent-public-key.der"
+        enrolled.parent.mkdir(mode=0o700)
+        enrolled.write_bytes(b"public-key-a")
+        enrolled.chmod(0o600)
+
+        fingerprint = hashlib.sha256(b"public-key-a").hexdigest()
+        self.assertTrue(_consent_enrollment_is_current(enrolled, fingerprint))
+        enrolled.write_bytes(b"public-key-b")
+        self.assertFalse(_consent_enrollment_is_current(enrolled, fingerprint))
+
+    def test_runtime_lifecycle_inspection_distinguishes_running_and_stale(self) -> None:
+        self.paths.root.mkdir(mode=0o700)
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(str(self.paths.socket))
+        self.paths.socket.chmod(0o600)
+        self.paths.readiness.write_text(
+            json.dumps({"pid": os.getpid(), "state": "ready"}), encoding="utf-8"
+        )
+        self.paths.readiness.chmod(0o600)
+        try:
+            running = inspect_runtime_lifecycle(self.paths)
+            self.assertTrue(running["running"])
+            self.assertEqual(running["pid"], os.getpid())
+        finally:
+            listener.close()
+            self.paths.socket.unlink()
+
+        stale = inspect_runtime_lifecycle(self.paths)
+        self.assertFalse(stale["running"])
+        self.assertEqual(stale["state"], "stale")
 
 
 if __name__ == "__main__":

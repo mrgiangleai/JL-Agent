@@ -114,11 +114,18 @@ one-time approval internally, and registers the prepared request with the
 existing gate. Approval tokens and client-computed fingerprints never cross a
 socket. See `PHASE4A_TRUST_BOUNDARY.md`.
 
-Phase 4B shows Accessibility and Screen Recording readiness reported for
-CuaDriver, with explicit System Settings guidance. It never prompts repeatedly,
-changes TCC, or performs screenshot/input automation. The foreground runtime
-remains operator-started; no LaunchAgent, final distribution signing, or voice
-surface exists.
+Phase 4C makes that host boundary explicit: the runtime validates the resolved
+binary's complete manifest, matching signed `CuaDriver.app` bundle/team identity,
+and driver-owned Accessibility/Screen Recording state. One authoritative live
+readiness result also requires the exact Hermes pin, authenticated runtime,
+active JL policy, and current native consent enrollment. The app displays that
+trusted result and user-driven System Settings links; it cannot override it.
+
+The foreground runtime remains operator-started through the repository-owned
+development script. The app reports authenticated PID/state but does not embed
+a Python path or become a supervisor. Active sockets reject duplicate runtime
+ownership and stale owned sockets remain recoverable. No LaunchAgent,
+privileged helper, final distribution signing, or voice surface exists.
 
 ### Execution Gate and Audit Ledger
 

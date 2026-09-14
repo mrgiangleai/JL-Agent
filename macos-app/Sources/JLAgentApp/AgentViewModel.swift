@@ -20,6 +20,8 @@ final class AgentViewModel: ObservableObject {
   @Published var pendingConsent: ConsentChallenge?
   @Published var activity: [ActivityEvent] = []
   @Published var computerUseStatus: ComputerUseStatus?
+  @Published var runtimePID: Int?
+  @Published var consentIdentityMatches = false
   @Published var isWorking = false
 
   let callerID = "native-macos-app"
@@ -54,12 +56,15 @@ final class AgentViewModel: ObservableObject {
     let sessionID = sessionID
     Task {
       do {
-        let status = try await Task.detached {
+        let observed = try await Task.detached {
           _ = try signer.provisionPublicKey(at: paths.consentPublicKey)
           _ = try credentials.loadOrImport(from: paths.credential)
-          return try client.status(callerID: callerID, sessionID: sessionID)
+          return (
+            try client.status(callerID: callerID, sessionID: sessionID),
+            try signer.publicKeyFingerprint()
+          )
         }.value
-        apply(status)
+        apply(observed.0, localConsentFingerprint: observed.1)
         await refreshActivity()
       } catch {
         apply(error)
@@ -70,14 +75,18 @@ final class AgentViewModel: ObservableObject {
   func refreshStatus() {
     connectionState = .connecting
     let client = client
+    let signer = signer
     let callerID = callerID
     let sessionID = sessionID
     Task {
       do {
-        let status = try await Task.detached {
-          try client.status(callerID: callerID, sessionID: sessionID)
+        let observed = try await Task.detached {
+          (
+            try client.status(callerID: callerID, sessionID: sessionID),
+            try signer.publicKeyFingerprint()
+          )
         }.value
-        apply(status)
+        apply(observed.0, localConsentFingerprint: observed.1)
       } catch {
         apply(error)
       }
@@ -113,6 +122,7 @@ final class AgentViewModel: ObservableObject {
         try await Task.detached {
           try signer.rotate(publicKeyURL: publicKeyURL)
         }.value
+        consentIdentityMatches = false
         resultText = "Consent key rotated. Restart the runtime to trust it."
       } catch {
         resultText = display(error)
@@ -249,19 +259,27 @@ final class AgentViewModel: ObservableObject {
     }
   }
 
-  private func apply(_ status: RuntimeStatus) {
+  private func apply(_ status: RuntimeStatus, localConsentFingerprint: String) {
+    runtimePID = status.runtimePID
     computerUseStatus = status.computerUse
+    consentIdentityMatches =
+      status.consentEnrollmentCurrent
+      && status.consentKeyFingerprint == localConsentFingerprint
     if !status.ready {
       connectionState = .unavailable
-    } else if status.state == "degraded" || !status.consentAvailable {
+    } else if status.state == "degraded" || !status.consentAvailable
+      || !consentIdentityMatches
+    {
       connectionState = .degraded
-      resultText = "Consent key is not loaded. Restart the foreground runtime."
+      resultText = "Consent enrollment is unavailable or changed. Restart the foreground runtime."
     } else {
       connectionState = .ready
     }
   }
 
   private func apply(_ error: Error) {
+    runtimePID = nil
+    consentIdentityMatches = false
     if case RuntimeClientError.server(let code, _) = error,
       code == "authentication_failed"
     {
@@ -310,4 +328,8 @@ final class AgentViewModel: ObservableObject {
     "click", "double_click", "right_click", "middle_click", "drag", "scroll",
     "type", "key", "set_value", "focus_app",
   ]
+
+  var runtimePIDText: String {
+    runtimePID.map(String.init) ?? "not running / unreachable"
+  }
 }

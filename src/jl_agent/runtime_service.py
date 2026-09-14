@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import signal
 import stat
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +18,7 @@ from .control.audit import AuditLedger
 from .control.auth import FileCredentialProvider
 from .control.codec import decode_control_request
 from .control.computer_use import (
+    ComputerUseExecutionReadiness,
     ComputerUseTargetGuard,
     HermesComputerUseReadinessProbe,
     MacOSForegroundApplicationProbe,
@@ -66,6 +69,72 @@ class RuntimePaths:
             consent_socket=base / "jl-agent-consent.sock",
             consent_public_key=base / "native-consent-public-key.der",
         )
+
+
+def inspect_runtime_lifecycle(paths: RuntimePaths) -> dict[str, object]:
+    """Inspect the foreground runtime marker without trusting it as authorization."""
+    stopped: dict[str, object] = {
+        "running": False,
+        "state": "stopped",
+        "pid": None,
+        "detail": "runtime readiness marker is absent",
+    }
+    try:
+        marker = paths.readiness.lstat()
+    except FileNotFoundError:
+        return stopped
+    if (
+        marker.st_uid != os.geteuid()
+        or not stat.S_ISREG(marker.st_mode)
+        or stat.S_IMODE(marker.st_mode) != 0o600
+        or marker.st_size > 4096
+    ):
+        return {
+            **stopped,
+            "state": "unsafe",
+            "detail": "runtime marker is not a private owned file",
+        }
+    try:
+        payload = json.loads(paths.readiness.read_text(encoding="utf-8"))
+        pid = payload.get("pid") if isinstance(payload, dict) else None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        pid = None
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return {
+            **stopped,
+            "state": "stale",
+            "detail": "runtime marker has no valid PID",
+        }
+    try:
+        socket_details = paths.socket.lstat()
+        socket_ready = (
+            socket_details.st_uid == os.geteuid()
+            and stat.S_ISSOCK(socket_details.st_mode)
+            and stat.S_IMODE(socket_details.st_mode) == 0o600
+        )
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return {
+            **stopped,
+            "state": "stale",
+            "pid": pid,
+            "detail": "runtime PID is not active",
+        }
+    except (OSError, PermissionError):
+        socket_ready = False
+    if not socket_ready:
+        return {
+            **stopped,
+            "state": "stale",
+            "pid": pid,
+            "detail": "runtime socket is unavailable",
+        }
+    return {
+        "running": True,
+        "state": str(payload.get("state") or "running"),
+        "pid": pid,
+        "detail": "foreground JL runtime marker and socket are present",
+    }
 
 
 class JLRuntimeService:
@@ -197,8 +266,10 @@ def build_runtime_service(
     computer_use_probe = HermesComputerUseReadinessProbe(
         root / "upstream" / "hermes-agent"
     )
+    hermes_projection = HermesProjection(root / "upstream" / "hermes-agent")
+    hermes_projection.inspect_identity()
     control_plane = JLControlPlane(
-        projection=HermesProjection(root / "upstream" / "hermes-agent"),
+        projection=hermes_projection,
         router=DeterministicModelRouter(
             RouterPolicy.from_file(root / "config" / "model-router.example.yaml")
         ),
@@ -227,14 +298,28 @@ def build_runtime_service(
 
     def runtime_status() -> dict[str, object]:
         computer_use = computer_use_probe.inspect()
+        consent_enrollment_current = _consent_enrollment_is_current(
+            paths.consent_public_key,
+            verifier.key_fingerprint if verifier.available else None,
+        )
+        execution_readiness = ComputerUseExecutionReadiness(
+            host=computer_use,
+            hermes_pin_valid=True,
+            authenticated_runtime=True,
+            policy_ready=True,
+            consent_ready=consent_enrollment_current,
+        )
         return {
             "ready": True,
-            "state": "ready" if verifier.available else "degraded",
+            "state": "ready" if consent_enrollment_current else "degraded",
+            "runtime_pid": os.getpid(),
             "protocol_version": 1,
             "transport": "AF_UNIX",
             "hermes_revision": HERMES_REVISION,
             "consent_available": verifier.available,
-            "computer_use": computer_use.as_dict(),
+            "consent_key_fingerprint": verifier.key_fingerprint,
+            "consent_enrollment_current": consent_enrollment_current,
+            "computer_use": execution_readiness.as_dict(),
         }
 
     handler = SecureControlRequestHandler(
@@ -269,6 +354,26 @@ def _load_consent_verifier(path: Path) -> ConsentSignatureVerifier:
         return UnavailableConsentVerifier()
 
 
+def _consent_enrollment_is_current(
+    path: Path, trusted_fingerprint: str | None
+) -> bool:
+    if trusted_fingerprint is None:
+        return False
+    try:
+        details = path.lstat()
+        if (
+            details.st_uid != os.geteuid()
+            or not stat.S_ISREG(details.st_mode)
+            or stat.S_IMODE(details.st_mode) != 0o600
+            or details.st_size > 16 * 1024
+        ):
+            return False
+        current = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return False
+    return current == trusted_fingerprint
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the JL Agent local runtime")
     parser.add_argument("--runtime-dir", type=Path)
@@ -277,7 +382,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="rotate the stopped runtime's IPC credential and exit",
     )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="inspect the foreground runtime marker and exit",
+    )
     arguments = parser.parse_args(argv)
+    if arguments.status:
+        status = inspect_runtime_lifecycle(
+            RuntimePaths.user_local(arguments.runtime_dir)
+        )
+        print(json.dumps(status, sort_keys=True))
+        return 0 if status["running"] else 1
     if arguments.rotate_credential:
         paths = RuntimePaths.user_local(arguments.runtime_dir)
         if paths.socket.exists() or paths.consent_socket.exists():
@@ -295,6 +411,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         service.start()
         service.serve_forever()
+    except Exception as error:
+        print(f"JL Agent runtime startup failed: {error}", file=sys.stderr)
+        return 1
     finally:
         service.shutdown()
     return 0

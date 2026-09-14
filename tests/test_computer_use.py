@@ -6,8 +6,10 @@ import unittest
 from pathlib import Path
 
 from jl_agent.control.computer_use import (
+    ComputerUseExecutionReadiness,
     ComputerUseTargetGuard,
     ComputerUseTargetIntegrityError,
+    CuaDriverHostIdentity,
     HermesComputerUseReadinessProbe,
     MacOSPermissionKind,
     MacOSPermissionState,
@@ -34,6 +36,20 @@ class ComputerUseReadinessTests(unittest.TestCase):
         manifest = manifest or {
             "binary_version": "0.20.1",
             "mcp_invocation": {"command": "cua-driver", "args": ["mcp"]},
+            "subcommands": [
+                {"name": "mcp", "args": [{"name": "--socket"}, {"name": "--grant"}]},
+                {
+                    "name": "serve",
+                    "args": [
+                        {"name": "--socket"},
+                        {"name": "--permission-mode"},
+                        {"name": "--capability-manifest"},
+                        {"name": "--approve-capability-manifest"},
+                        {"name": "--embedded"},
+                    ],
+                },
+                {"name": "stop", "args": [{"name": "--socket"}]},
+            ],
         }
 
         def run(command, _timeout):
@@ -44,6 +60,13 @@ class ComputerUseReadinessTests(unittest.TestCase):
             ROOT / "upstream" / "hermes-agent",
             platform="darwin",
             driver_resolver=lambda: "/opt/cua-driver",
+            driver_identity_inspector=lambda _: CuaDriverHostIdentity(
+                True,
+                True,
+                "com.trycua.driver",
+                "YCK386LBJ7",
+                "official identity",
+            ),
             command_runner=run,
         ).inspect()
 
@@ -114,6 +137,70 @@ class ComputerUseReadinessTests(unittest.TestCase):
 
         self.assertEqual(missing.health_probe().state, HealthState.UNAVAILABLE)
         self.assertEqual(bad.health_probe().state, HealthState.MISCONFIGURED)
+
+    def test_missing_or_wrong_driver_app_identity_fails_closed(self) -> None:
+        def inspect(identity: CuaDriverHostIdentity):
+            return HermesComputerUseReadinessProbe(
+                ROOT / "upstream" / "hermes-agent",
+                platform="darwin",
+                driver_resolver=lambda: "/opt/cua-driver",
+                driver_identity_inspector=lambda _: identity,
+                command_runner=lambda command, _timeout: completed(
+                    list(command),
+                    (
+                        {
+                            "binary_version": "0.28.0",
+                            "mcp_invocation": {"args": ["mcp"]},
+                            "subcommands": [
+                                {
+                                    "name": "mcp",
+                                    "args": [
+                                        {"name": "--socket"},
+                                        {"name": "--grant"},
+                                    ],
+                                },
+                                {"name": "serve", "args": [
+                                    {"name": "--socket"}, {"name": "--permission-mode"},
+                                    {"name": "--capability-manifest"},
+                                    {"name": "--approve-capability-manifest"},
+                                    {"name": "--embedded"},
+                                ]},
+                                {"name": "stop", "args": [{"name": "--socket"}]},
+                            ],
+                        }
+                        if command[1] == "manifest"
+                        else {"accessibility": True, "screen_recording": True}
+                    ),
+                ),
+            ).inspect()
+
+        missing = inspect(CuaDriverHostIdentity(False, False, None, None, "missing"))
+        wrong = inspect(
+            CuaDriverHostIdentity(
+                True, True, "com.trycua.driver", "UNTRUSTED", "wrong team"
+            )
+        )
+
+        self.assertFalse(missing.ready)
+        self.assertEqual(missing.health_probe().state, HealthState.MISCONFIGURED)
+        self.assertFalse(wrong.ready)
+        self.assertIn("wrong team", wrong.health_probe().detail)
+
+    def test_execution_readiness_requires_consent_and_trusted_runtime(self) -> None:
+        host = self.probe(
+            {"accessibility": True, "screen_recording": True}
+        )
+        blocked = ComputerUseExecutionReadiness(
+            host=host,
+            hermes_pin_valid=True,
+            authenticated_runtime=True,
+            policy_ready=True,
+            consent_ready=False,
+        )
+
+        self.assertFalse(blocked.ready)
+        self.assertIn("consent enrollment", blocked.blocked_reason)
+        self.assertFalse(blocked.as_dict()["execution_ready"])
 
     def test_disabled_probe_runs_no_external_command(self) -> None:
         calls = []

@@ -54,6 +54,7 @@ class FakeRuntime:
 
 class DigestVerifier:
     available = True
+    key_fingerprint = "0" * 64
 
     def verify(self, message: bytes, signature: str) -> bool:
         expected = base64.b64encode(hashlib.sha256(message).digest()).decode()
@@ -323,6 +324,10 @@ class NativeConsentSignatureVerifierTests(unittest.TestCase):
 
             self.assertTrue(verifier.verify(message.read_bytes(), encoded))
             self.assertFalse(verifier.verify(b"changed", encoded))
+            self.assertEqual(
+                verifier.key_fingerprint,
+                hashlib.sha256(public_key.read_bytes()).hexdigest(),
+            )
 
 
 if __name__ == "__main__":

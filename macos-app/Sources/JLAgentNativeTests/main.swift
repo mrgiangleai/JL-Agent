@@ -58,7 +58,8 @@ enum NativeContractTests {
     try computerUseRequestBindsScopesTargetAndForeground()
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
-    print("9 native contract tests passed")
+    try missingEnrolledConsentKeyRequiresExplicitRotation()
+    print("10 native contract tests passed")
   }
 
   private static func runIntegrationCommand(_ arguments: [String]) throws {
@@ -309,17 +310,32 @@ enum NativeContractTests {
         result: [
           "ready": true,
           "state": "ready",
+          "runtime_pid": 1234,
           "transport": "AF_UNIX",
           "hermes_revision": String(repeating: "a", count: 40),
           "consent_available": true,
+          "consent_key_fingerprint": String(repeating: "b", count: 64),
+          "consent_enrollment_current": true,
           "computer_use": [
             "enabled": true,
             "health": "unavailable",
             "ready": false,
             "platform_supported": true,
             "driver_available": true,
+            "driver_reachable": true,
             "driver_contract_ready": true,
             "driver_version": "0.20.1",
+            "driver_app_available": true,
+            "driver_identity_ready": true,
+            "driver_bundle_id": "com.trycua.driver",
+            "driver_team_id": "YCK386LBJ7",
+            "hermes_pin_valid": true,
+            "authenticated_runtime": true,
+            "policy_ready": true,
+            "consent_ready": true,
+            "driver_service_required": false,
+            "execution_ready": false,
+            "blocked_reason": "required permission is unknown",
             "detail": "required permission is unknown",
             "permissions": [
               [
@@ -468,6 +484,30 @@ enum NativeContractTests {
       "public key mode is unavailable"
     )
     try check(mode.intValue == 0o600, "public key file is not private")
+    let fingerprint = try key.publicKeyFingerprint()
+    try check(fingerprint.count == 64, "consent fingerprint is invalid")
+  }
+
+  private static func missingEnrolledConsentKeyRequiresExplicitRotation() throws {
+    let key = ConsentSigningKey(tag: "com.jlagent.tests.\(UUID().uuidString)")
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("jl-agent-lost-consent-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(
+      at: directory,
+      withIntermediateDirectories: false,
+      attributes: [.posixPermissions: 0o700]
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let publicURL = directory.appendingPathComponent("public.der")
+    try Data("previous-enrollment".utf8).write(to: publicURL)
+    try check(chmod(publicURL.path, 0o600) == 0, "enrollment chmod failed")
+    var refused = false
+    do {
+      _ = try key.provisionPublicKey(at: publicURL)
+    } catch RuntimeClientError.credential {
+      refused = true
+    }
+    try check(refused, "missing enrolled key was silently replaced")
   }
 
   private static func makeClient(

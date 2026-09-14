@@ -59,27 +59,35 @@ public struct ResponseEnvelope: Codable, Equatable, Sendable {
 public struct RuntimeStatus: Equatable, Sendable {
   public let ready: Bool
   public let state: String
+  public let runtimePID: Int
   public let transport: String
   public let hermesRevision: String
   public let consentAvailable: Bool
+  public let consentKeyFingerprint: String?
+  public let consentEnrollmentCurrent: Bool
   public let computerUse: ComputerUseStatus
 
   init(result: [String: JSONValue]) throws {
     guard
       let ready = result["ready"]?.boolValue,
       let state = result["state"]?.stringValue,
+      let runtimePID = result["runtime_pid"]?.intValue,
       let transport = result["transport"]?.stringValue,
       let revision = result["hermes_revision"]?.stringValue,
       let consent = result["consent_available"]?.boolValue,
+      let consentEnrollmentCurrent = result["consent_enrollment_current"]?.boolValue,
       let computerUse = result["computer_use"]?.objectValue
     else {
       throw RuntimeClientError.malformedResponse
     }
     self.ready = ready
     self.state = state
+    self.runtimePID = runtimePID
     self.transport = transport
     self.hermesRevision = revision
     self.consentAvailable = consent
+    self.consentKeyFingerprint = result["consent_key_fingerprint"]?.stringValue
+    self.consentEnrollmentCurrent = consentEnrollmentCurrent
     self.computerUse = try ComputerUseStatus(value: computerUse)
   }
 }
@@ -123,8 +131,20 @@ public struct ComputerUseStatus: Equatable, Sendable {
   public let ready: Bool
   public let platformSupported: Bool
   public let driverAvailable: Bool
+  public let driverReachable: Bool
   public let driverContractReady: Bool
   public let driverVersion: String?
+  public let driverAppAvailable: Bool
+  public let driverIdentityReady: Bool
+  public let driverBundleID: String?
+  public let driverTeamID: String?
+  public let hermesPinValid: Bool
+  public let authenticatedRuntime: Bool
+  public let policyReady: Bool
+  public let consentReady: Bool
+  public let driverServiceRequired: Bool
+  public let executionReady: Bool
+  public let blockedReason: String
   public let detail: String
   public let permissions: [MacOSPermissionStatus]
 
@@ -132,14 +152,28 @@ public struct ComputerUseStatus: Equatable, Sendable {
     guard
       Set(value.keys) == [
         "enabled", "health", "ready", "platform_supported", "driver_available",
-        "driver_contract_ready", "driver_version", "detail", "permissions",
+        "driver_reachable", "driver_contract_ready", "driver_version",
+        "driver_app_available", "driver_identity_ready", "driver_bundle_id",
+        "driver_team_id", "hermes_pin_valid", "authenticated_runtime",
+        "policy_ready", "consent_ready", "driver_service_required",
+        "execution_ready", "blocked_reason", "detail", "permissions",
       ],
       let enabled = value["enabled"]?.boolValue,
       let health = value["health"]?.stringValue,
       let ready = value["ready"]?.boolValue,
       let platform = value["platform_supported"]?.boolValue,
       let driver = value["driver_available"]?.boolValue,
+      let reachable = value["driver_reachable"]?.boolValue,
       let contract = value["driver_contract_ready"]?.boolValue,
+      let appAvailable = value["driver_app_available"]?.boolValue,
+      let identityReady = value["driver_identity_ready"]?.boolValue,
+      let hermesPin = value["hermes_pin_valid"]?.boolValue,
+      let authenticatedRuntime = value["authenticated_runtime"]?.boolValue,
+      let policyReady = value["policy_ready"]?.boolValue,
+      let consentReady = value["consent_ready"]?.boolValue,
+      let serviceRequired = value["driver_service_required"]?.boolValue,
+      let executionReady = value["execution_ready"]?.boolValue,
+      let blockedReason = value["blocked_reason"]?.stringValue,
       let detail = value["detail"]?.stringValue,
       let permissions = value["permissions"]?.arrayValue
     else {
@@ -150,8 +184,20 @@ public struct ComputerUseStatus: Equatable, Sendable {
     self.ready = ready
     self.platformSupported = platform
     self.driverAvailable = driver
+    self.driverReachable = reachable
     self.driverContractReady = contract
     self.driverVersion = value["driver_version"]?.stringValue
+    self.driverAppAvailable = appAvailable
+    self.driverIdentityReady = identityReady
+    self.driverBundleID = value["driver_bundle_id"]?.stringValue
+    self.driverTeamID = value["driver_team_id"]?.stringValue
+    self.hermesPinValid = hermesPin
+    self.authenticatedRuntime = authenticatedRuntime
+    self.policyReady = policyReady
+    self.consentReady = consentReady
+    self.driverServiceRequired = serviceRequired
+    self.executionReady = executionReady
+    self.blockedReason = blockedReason
     self.detail = detail
     self.permissions = try permissions.map(MacOSPermissionStatus.init(value:))
   }

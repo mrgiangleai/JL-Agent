@@ -147,3 +147,99 @@ after the repository-side workflow is reviewed and the user explicitly runs or
 authorizes it. Accessibility and Screen Recording will remain user-granted in
 System Settings; Phase 4C will stop before those grants if they become the next
 required action.
+
+## Stable host identity and signing
+
+The JL app keeps the durable bundle ID `com.jlagent.control`. The build script
+now accepts `JL_CODE_SIGN_IDENTITY` and uses that exact existing identity when
+provided. This host has no valid Apple Development or Developer ID identity,
+so the verified local build remains ad-hoc signed. Phase 4C does not fabricate
+a certificate, modify Keychain trust, or make distribution claims.
+
+This limitation does not destabilize Cua TCC because JL Agent is not the TCC
+owner. The reviewed Cua release is signed by team `YCK386LBJ7` under
+`com.trycua.driver`; its designated requirement is the stable identity that
+receives Accessibility and Screen Recording.
+
+The native consent private key remains a permanent Keychain RSA key with the
+application tag `com.jlagent.native-consent.v1`. Signing now refuses to create
+a replacement key when an enrollment file already exists but its Keychain key
+is missing. Only the explicit Rotate Consent Key action replaces it.
+
+The runtime hashes the public enrollment file at startup and exposes the
+trusted SHA-256 fingerprint over authenticated status. It also re-hashes the
+current private owned file on every status read. File loss or rotation while
+the runtime is running makes `consent_enrollment_current` false and the live
+computer-use readiness gate denies until the runtime restarts with the new
+explicit enrollment. The private key never leaves Keychain.
+
+## TCC onboarding and authoritative readiness
+
+The native Permissions surface remains display-only and user-driven. It now
+shows the foreground runtime PID, binary reachability, manifest version,
+matching `CuaDriver.app` bundle/team identity, exact blocked reason, per-TCC
+state, relaunch guidance, Settings links, and Recheck. It never invokes the
+driver, requests a grant, or accepts a client permission assertion.
+
+`ComputerUseExecutionReadiness` is the single runtime-owned live readiness
+decision. It requires all of:
+
+- the exact Hermes pin loaded successfully;
+- authenticated local runtime status and active JL policy;
+- current trusted native consent enrollment;
+- computer-use enabled on supported macOS;
+- a resolvable and manifest-reachable cua-driver;
+- the complete Hermes 0.20+ runtime contract;
+- a matching signed `CuaDriver.app` with an allowlisted official team;
+- Accessibility granted to that driver identity;
+- Screen Recording granted and currently capturable.
+
+The standard MCP session starts on demand, so a separate persistent driver
+service is not required. Manifest reachability is required. Unknown, denied,
+missing, incompatible, unsigned, wrong-team, stale-enrollment, and
+restart-required states all remain not ready.
+
+## Foreground runtime lifecycle
+
+Phase 4C keeps the foreground user-session process and does not add a
+LaunchAgent or privileged helper. `scripts/run-local-runtime.sh` gives the
+native development workflow one stable repository entry point and refuses to
+guess when the small project `.venv` is absent. `--status` inspects only the
+private readiness marker, PID liveness, and owned `0600` AF_UNIX socket.
+
+Existing IPC ownership remains authoritative: an active endpoint rejects a
+second runtime; a dead owned Unix socket is recoverable; wrong-type/unowned
+paths are never removed. Startup errors are now concise on stderr, signals use
+the existing graceful shutdown, and owned sockets/readiness are removed by
+identity on shutdown. The Swift app does not spawn Python because that would
+embed brittle checkout and environment assumptions; it shows running/unreachable
+state and the authenticated runtime PID instead.
+
+## Focused validation so far
+
+Sequential checks completed before host installation:
+
+```text
+Provisioning asset SHA/signature audit             passed
+Focused backend readiness/lifecycle/consent tests  20 passed
+All JL-owned backend tests                         103 passed
+Ruff                                                 passed
+ty                                                   passed
+pip check                                            passed
+Swift format lint                                    passed
+Native deterministic contract tests                 10 passed
+Native release build and ad-hoc signature            passed
+```
+
+The focused adversarial coverage includes absent/unreachable/incompatible
+driver state, missing/wrong driver app identity, missing TCC, consent enrollment
+drift, stale runtime state, duplicate endpoint ownership, client health
+override rejection, execution while health is not ready, post-consent action
+mutation, foreground drift, replay, and native/direct-driver surface exclusion.
+The full Hermes suite was not run.
+
+## Live GUI smoke status
+
+Not performed. The authoritative readiness gate is false because no installed
+Cua Driver host or TCC grants exist. No screenshot, pointer movement, click,
+typing, System Settings mutation, or direct-driver proof was attempted.

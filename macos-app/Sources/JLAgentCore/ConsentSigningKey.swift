@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 import Security
@@ -11,21 +12,25 @@ public final class ConsentSigningKey: @unchecked Sendable {
 
   @discardableResult
   public func provisionPublicKey(at url: URL) throws -> Data {
-    let key = try loadOrCreate()
-    guard
-      let publicKey = SecKeyCopyPublicKey(key),
-      let representation = SecKeyCopyExternalRepresentation(publicKey, nil)
-        as Data?
-    else {
-      throw RuntimeClientError.credential("Consent public key is unavailable")
-    }
+    let key =
+      FileManager.default.fileExists(atPath: url.path)
+      ? try loadExisting()
+      : try loadOrCreate()
+    let representation = try publicRepresentation(of: key)
     try writePublicKey(representation, to: url)
     return representation
   }
 
   public func rotate(publicKeyURL: URL) throws {
     try remove()
-    _ = try provisionPublicKey(at: publicKeyURL)
+    let representation = try publicRepresentation(of: create())
+    try writePublicKey(representation, to: publicKeyURL)
+  }
+
+  public func publicKeyFingerprint() throws -> String {
+    SHA256.hash(data: try publicRepresentation(of: loadExisting()))
+      .map { String(format: "%02x", $0) }
+      .joined()
   }
 
   public func sign(
@@ -33,7 +38,7 @@ public final class ConsentSigningKey: @unchecked Sendable {
     decision: ConsentDecision
   ) throws -> String {
     let message = canonicalConsentMessage(challenge: challenge, decision: decision)
-    let key = try loadOrCreate()
+    let key = try loadExisting()
     var error: Unmanaged<CFError>?
     guard
       let signature = SecKeyCreateSignature(
@@ -73,6 +78,24 @@ public final class ConsentSigningKey: @unchecked Sendable {
     guard status == errSecItemNotFound else {
       throw RuntimeClientError.credential("Consent key is unavailable")
     }
+    return try create()
+  }
+
+  private func loadExisting() throws -> SecKey {
+    var item: CFTypeRef?
+    var query = keyQuery
+    query[kSecReturnRef as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    guard status == errSecSuccess, let key = item as! SecKey? else {
+      throw RuntimeClientError.credential(
+        "Enrolled consent key is missing. Rotate it explicitly while the runtime is stopped."
+      )
+    }
+    return key
+  }
+
+  private func create() throws -> SecKey {
     let attributes: [String: Any] = [
       kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
       kSecAttrKeySizeInBits as String: 2048,
@@ -88,6 +111,17 @@ public final class ConsentSigningKey: @unchecked Sendable {
       throw RuntimeClientError.credential("Consent key could not be created")
     }
     return key
+  }
+
+  private func publicRepresentation(of key: SecKey) throws -> Data {
+    guard
+      let publicKey = SecKeyCopyPublicKey(key),
+      let representation = SecKeyCopyExternalRepresentation(publicKey, nil)
+        as Data?
+    else {
+      throw RuntimeClientError.credential("Consent public key is unavailable")
+    }
+    return representation
   }
 
   private func writePublicKey(_ data: Data, to url: URL) throws {

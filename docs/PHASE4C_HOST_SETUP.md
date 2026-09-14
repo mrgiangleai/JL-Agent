@@ -75,6 +75,42 @@ Python runtime. Return to JL Agent and choose Recheck only after both user
 decisions are complete. Relaunch CuaDriver and the foreground JL runtime only
 if readiness reports that a restart is required.
 
+## Foreground JL runtime
+
+Use the repository-owned entry point after creating the small `.venv` described
+by `pyproject.toml`:
+
+```bash
+./scripts/run-local-runtime.sh
+```
+
+In a second terminal, inspect lifecycle metadata without starting another
+runtime:
+
+```bash
+./scripts/run-local-runtime.sh --status
+```
+
+The native app connects to this foreground process. It does not guess a Python
+path or silently spawn a child. An active socket rejects duplicate ownership;
+after a crash, the next legitimate runtime recovers only an owned stale socket.
+Stop with Control-C for graceful socket/readiness cleanup.
+
+## JL development signing
+
+The app bundle ID is `com.jlagent.control`. When an existing Apple Development
+identity is available, pass its exact name or SHA-1 to the build:
+
+```bash
+JL_CODE_SIGN_IDENTITY='Apple Development: Name (TEAMID)' \
+  ./macos-app/Scripts/build-app.sh
+```
+
+Without that environment variable the build is ad-hoc signed and prints the
+development limitation. Do not create a certificate or change Keychain trust
+merely to silence that warning. Cua TCC remains attached to the separately
+signed `com.trycua.driver` app.
+
 ## Revocation
 
 Revoke access in the same two System Settings panels. JL treats denied,

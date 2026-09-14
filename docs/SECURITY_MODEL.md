@@ -167,3 +167,18 @@ was not validated. The deterministic proof reaches the pinned Hermes
 live screenshot or UI action. Hardware interrupt UI, broad visual-state
 verification, multi-step GUI planning, driver installation, and production
 signed lifecycle remain out of scope.
+
+Phase 4C additionally binds live readiness to the exact pinned Hermes checkout,
+complete driver manifest, executable-derived CuaDriver app path, exact
+`com.trycua.driver` bundle ID, allowlisted official signing team, both TCC
+grants, authenticated runtime, policy availability, and current consent-key
+enrollment. A raw executable outside the signed app, an ad-hoc/wrong-team app,
+or an unavailable probe fails closed. Standard mode starts MCP on demand; JL
+does not enable private unrestricted mode or approval bypass.
+
+Consent enrollment status uses only a SHA-256 fingerprint of the public key.
+The runtime pins the public key at startup and compares the current private
+owned enrollment file to that pin; rotation or loss while running blocks live
+computer use until an explicit restart. The private key remains Keychain-only.
+The ad-hoc JL development build is a documented host limitation when no Apple
+code-signing identity exists, but it is not granted CuaDriver's TCC access.

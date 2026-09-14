@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import plistlib
 import re
 import subprocess
 import sys
@@ -35,6 +36,28 @@ class MacOSPermissionKind(StrEnum):
     SCREEN_RECORDING = "screenRecording"
 
 
+CUA_DRIVER_BUNDLE_ID = "com.trycua.driver"
+CUA_DRIVER_TEAM_IDS = frozenset({"4YEC26S9KF", "YCK386LBJ7"})
+
+
+@dataclass(frozen=True, slots=True)
+class CuaDriverHostIdentity:
+    app_available: bool
+    signature_valid: bool
+    bundle_id: str | None
+    team_id: str | None
+    detail: str
+
+    @property
+    def ready(self) -> bool:
+        return (
+            self.app_available
+            and self.signature_valid
+            and self.bundle_id == CUA_DRIVER_BUNDLE_ID
+            and self.team_id in CUA_DRIVER_TEAM_IDS
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class MacOSPermissionStatus:
     kind: MacOSPermissionKind
@@ -56,8 +79,10 @@ class ComputerUseReadiness:
     enabled: bool
     platform_supported: bool
     driver_available: bool
+    driver_reachable: bool
     driver_contract_ready: bool
     driver_version: str | None
+    driver_identity: CuaDriverHostIdentity
     permissions: tuple[MacOSPermissionStatus, ...]
     detail: str
 
@@ -67,7 +92,9 @@ class ComputerUseReadiness:
             self.enabled
             and self.platform_supported
             and self.driver_available
+            and self.driver_reachable
             and self.driver_contract_ready
+            and self.driver_identity.ready
             and all(
                 permission.state is MacOSPermissionState.GRANTED
                 for permission in self.permissions
@@ -85,10 +112,21 @@ class ComputerUseReadiness:
             return ProbeOutcome(
                 HealthState.UNAVAILABLE, "cua-driver is not installed or resolvable"
             )
+        if not self.driver_reachable:
+            return ProbeOutcome(
+                HealthState.UNAVAILABLE,
+                self.detail or "cua-driver does not answer its manifest probe",
+            )
         if not self.driver_contract_ready:
             return ProbeOutcome(
                 HealthState.MISCONFIGURED,
                 self.detail or "cua-driver runtime contract is invalid",
+            )
+        if not self.driver_identity.ready:
+            return ProbeOutcome(
+                HealthState.MISCONFIGURED,
+                self.driver_identity.detail
+                or "CuaDriver.app signing identity is unavailable",
             )
         missing = [
             permission
@@ -115,15 +153,69 @@ class ComputerUseReadiness:
             "ready": self.ready,
             "platform_supported": self.platform_supported,
             "driver_available": self.driver_available,
+            "driver_reachable": self.driver_reachable,
             "driver_contract_ready": self.driver_contract_ready,
             "driver_version": self.driver_version,
+            "driver_app_available": self.driver_identity.app_available,
+            "driver_identity_ready": self.driver_identity.ready,
+            "driver_bundle_id": self.driver_identity.bundle_id,
+            "driver_team_id": self.driver_identity.team_id,
             "detail": probe.detail,
             "permissions": [item.as_dict() for item in self.permissions],
         }
 
 
+@dataclass(frozen=True, slots=True)
+class ComputerUseExecutionReadiness:
+    host: ComputerUseReadiness
+    hermes_pin_valid: bool
+    authenticated_runtime: bool
+    policy_ready: bool
+    consent_ready: bool
+
+    @property
+    def ready(self) -> bool:
+        return (
+            self.host.ready
+            and self.hermes_pin_valid
+            and self.authenticated_runtime
+            and self.policy_ready
+            and self.consent_ready
+        )
+
+    @property
+    def blocked_reason(self) -> str:
+        if not self.hermes_pin_valid:
+            return "Hermes source does not match the required pin"
+        if not self.authenticated_runtime:
+            return "authenticated JL runtime status is unavailable"
+        if not self.policy_ready:
+            return "JL computer-use policy is unavailable"
+        if not self.consent_ready:
+            return "trusted native consent enrollment is unavailable"
+        if not self.host.ready:
+            return self.host.health_probe().detail
+        return "ready for one exact policy-gated computer-use action"
+
+    def as_dict(self) -> dict[str, object]:
+        status = self.host.as_dict()
+        status.update(
+            {
+                "hermes_pin_valid": self.hermes_pin_valid,
+                "authenticated_runtime": self.authenticated_runtime,
+                "policy_ready": self.policy_ready,
+                "consent_ready": self.consent_ready,
+                "driver_service_required": False,
+                "execution_ready": self.ready,
+                "blocked_reason": self.blocked_reason,
+            }
+        )
+        return status
+
+
 CommandRunner = Callable[[Sequence[str], float], subprocess.CompletedProcess[str]]
 DriverResolver = Callable[[], str | None]
+DriverIdentityInspector = Callable[[str], CuaDriverHostIdentity]
 
 
 class ComputerUseTargetIntegrityError(RuntimeError):
@@ -213,6 +305,7 @@ class HermesComputerUseReadinessProbe:
         enabled: bool = True,
         platform: str = sys.platform,
         driver_resolver: DriverResolver | None = None,
+        driver_identity_inspector: DriverIdentityInspector | None = None,
         command_runner: CommandRunner | None = None,
         timeout_seconds: float = 2.0,
     ) -> None:
@@ -222,20 +315,38 @@ class HermesComputerUseReadinessProbe:
         self.enabled = enabled
         self.platform = platform
         self._driver_resolver = driver_resolver
+        self._driver_identity_inspector = driver_identity_inspector
         self._command_runner = command_runner or _run_command
         self.timeout_seconds = timeout_seconds
 
     def inspect(self) -> ComputerUseReadiness:
         permissions = _unavailable_permissions()
+        unavailable_identity = CuaDriverHostIdentity(
+            False, False, None, None, "CuaDriver.app is unavailable"
+        )
         if not self.enabled:
             return ComputerUseReadiness(
-                False, self.platform == "darwin", False, False, None, permissions,
+                False,
+                self.platform == "darwin",
+                False,
+                False,
+                False,
+                None,
+                unavailable_identity,
+                permissions,
                 "computer use is disabled",
             )
         if self.platform != "darwin":
             return ComputerUseReadiness(
-                True, False, False, False, None, permissions,
-                "Phase 4B exposes only the audited macOS slice",
+                True,
+                False,
+                False,
+                False,
+                False,
+                None,
+                unavailable_identity,
+                permissions,
+                "Phase 4C exposes only the audited macOS slice",
             )
         try:
             binary = (
@@ -245,14 +356,35 @@ class HermesComputerUseReadinessProbe:
             )
         except Exception as error:
             return ComputerUseReadiness(
-                True, True, False, False, None, permissions,
+                True,
+                True,
+                False,
+                False,
+                False,
+                None,
+                unavailable_identity,
+                permissions,
                 f"cua-driver resolution failed: {error}",
             )
         if not binary:
             return ComputerUseReadiness(
-                True, True, False, False, None, permissions,
+                True,
+                True,
+                False,
+                False,
+                False,
+                None,
+                unavailable_identity,
+                permissions,
                 "cua-driver is not installed or resolvable",
             )
+        identity = (
+            self._driver_identity_inspector(binary)
+            if self._driver_identity_inspector is not None
+            else _inspect_driver_identity(
+                binary, self._command_runner, self.timeout_seconds
+            )
+        )
         manifest, manifest_error = self._json_command([binary, "manifest"])
         contract_ready, version, contract_detail = _manifest_status(manifest)
         if manifest_error:
@@ -266,8 +398,10 @@ class HermesComputerUseReadinessProbe:
             True,
             True,
             True,
+            manifest is not None and not manifest_error,
             contract_ready and not manifest_error,
             version,
+            identity,
             permissions,
             detail,
         )
@@ -323,6 +457,70 @@ def _run_command(
     )
 
 
+def _inspect_driver_identity(
+    binary: str,
+    command_runner: CommandRunner,
+    timeout_seconds: float,
+) -> CuaDriverHostIdentity:
+    try:
+        executable = Path(binary).expanduser().resolve(strict=True)
+    except OSError as error:
+        return CuaDriverHostIdentity(
+            False, False, None, None, f"cua-driver path is invalid: {error}"
+        )
+    app_path = next(
+        (parent for parent in executable.parents if parent.name == "CuaDriver.app"),
+        None,
+    )
+    if app_path is None:
+        return CuaDriverHostIdentity(
+            False,
+            False,
+            None,
+            None,
+            "resolved cua-driver is not carried by CuaDriver.app",
+        )
+    try:
+        with (app_path / "Contents" / "Info.plist").open("rb") as stream:
+            plist = plistlib.load(stream)
+        bundle_id = plist.get("CFBundleIdentifier")
+    except (OSError, plistlib.InvalidFileException):
+        bundle_id = None
+    if not isinstance(bundle_id, str):
+        bundle_id = None
+    try:
+        verified = command_runner(
+            ["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app_path)],
+            timeout_seconds,
+        )
+        details = command_runner(
+            ["/usr/bin/codesign", "-dv", "--verbose=4", str(app_path)],
+            timeout_seconds,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return CuaDriverHostIdentity(
+            True, False, bundle_id, None, f"CuaDriver signature probe failed: {error}"
+        )
+    signature_valid = verified.returncode == 0 and details.returncode == 0
+    signature_text = f"{details.stdout or ''}\n{details.stderr or ''}"
+    team_match = re.search(r"^TeamIdentifier=(.+)$", signature_text, re.MULTILINE)
+    team_id = team_match.group(1).strip() if team_match else None
+    if bundle_id != CUA_DRIVER_BUNDLE_ID:
+        detail = (
+            f"CuaDriver bundle identifier is {bundle_id or 'missing'}, "
+            f"expected {CUA_DRIVER_BUNDLE_ID}"
+        )
+    elif not signature_valid:
+        detail = "CuaDriver.app signature verification failed"
+    elif team_id not in CUA_DRIVER_TEAM_IDS:
+        detail = f"CuaDriver.app signing team is {team_id or 'missing'}"
+    else:
+        detail = "CuaDriver.app has the expected signed host identity"
+    return CuaDriverHostIdentity(
+        True, signature_valid, bundle_id, team_id, detail
+    )
+
+
 def _manifest_status(
     manifest: Mapping[str, Any] | None,
 ) -> tuple[bool, str | None, str]:
@@ -333,8 +531,39 @@ def _manifest_status(
     if match is None or tuple(int(part) for part in match.groups()) < (0, 20, 0):
         return False, version, "Hermes computer use requires cua-driver 0.20.0 or newer"
     invocation = manifest.get("mcp_invocation")
-    if not isinstance(invocation, dict) or not isinstance(invocation.get("args"), list):
+    if (
+        not isinstance(invocation, dict)
+        or not isinstance(invocation.get("args"), list)
+        or not all(isinstance(item, str) for item in invocation["args"])
+    ):
         return False, version, "cua-driver manifest has no MCP invocation"
+    advertised = {
+        command["name"]: {
+            argument["name"]
+            for argument in command.get("args", [])
+            if isinstance(argument, dict) and isinstance(argument.get("name"), str)
+        }
+        for command in manifest.get("subcommands", [])
+        if isinstance(command, dict) and isinstance(command.get("name"), str)
+    }
+    required = {
+        "mcp": {"--socket", "--grant"},
+        "serve": {
+            "--socket",
+            "--permission-mode",
+            "--capability-manifest",
+            "--approve-capability-manifest",
+            "--embedded",
+        },
+        "stop": {"--socket"},
+    }
+    missing = [
+        f"{command} {argument}"
+        for command, arguments in required.items()
+        for argument in sorted(arguments - advertised.get(command, set()))
+    ]
+    if missing:
+        return False, version, "cua-driver manifest is missing: " + ", ".join(missing)
     return True, version, ""
 
 

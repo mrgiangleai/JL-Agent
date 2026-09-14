@@ -250,12 +250,14 @@ class ConsentCoordinator:
 
 class ConsentSignatureVerifier(Protocol):
     available: bool
+    key_fingerprint: str | None
 
     def verify(self, message: bytes, signature: str) -> bool: ...
 
 
 class UnavailableConsentVerifier:
     available = False
+    key_fingerprint = None
 
     def verify(self, message: bytes, signature: str) -> bool:
         return False
@@ -266,11 +268,14 @@ class RSAPKCS1v15SHA256Verifier:
 
     available = True
 
-    def __init__(self, modulus: int, exponent: int) -> None:
+    def __init__(
+        self, modulus: int, exponent: int, *, key_fingerprint: str | None = None
+    ) -> None:
         if modulus.bit_length() < 2048 or exponent < 3 or exponent % 2 == 0:
             raise ValueError("native consent public key is invalid")
         self.modulus = modulus
         self.exponent = exponent
+        self.key_fingerprint = key_fingerprint
         self._size = (modulus.bit_length() + 7) // 8
 
     @classmethod
@@ -286,8 +291,13 @@ class RSAPKCS1v15SHA256Verifier:
             or details.st_size > 16 * 1024
         ):
             raise ValueError("native consent public key must be a private owned file")
-        modulus, exponent = _parse_rsa_public_key(key_path.read_bytes())
-        return cls(modulus, exponent)
+        encoded = key_path.read_bytes()
+        modulus, exponent = _parse_rsa_public_key(encoded)
+        return cls(
+            modulus,
+            exponent,
+            key_fingerprint=hashlib.sha256(encoded).hexdigest(),
+        )
 
     def verify(self, message: bytes, signature: str) -> bool:
         try:
