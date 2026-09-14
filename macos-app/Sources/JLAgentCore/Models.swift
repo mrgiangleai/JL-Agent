@@ -282,6 +282,7 @@ public struct RequestDraft: Equatable, Sendable {
   public var argumentsJSON = "{\"path\":\"docs/ARCHITECTURE.md\"}"
   public var requestedPermission = "local.read"
   public var resolvedTarget = "docs/ARCHITECTURE.md"
+  public var foregroundApp = ""
   public var targetWithinWorkspace = true
   public var reversible = true
 
@@ -294,8 +295,13 @@ public struct RequestDraft: Equatable, Sendable {
       "action": .object([
         "action": .string(action),
         "normalized_arguments": .object(arguments),
-        "requested_permissions": .array([.string(requestedPermission)]),
+        "requested_permissions": .array(
+          requestedPermission.split(separator: ",").map {
+            .string($0.trimmingCharacters(in: .whitespaces))
+          }
+        ),
         "resolved_target": .string(resolvedTarget),
+        "foreground_app": .string(foregroundApp),
         "target_within_workspace": .bool(targetWithinWorkspace),
         "reversible": .bool(reversible),
         "approval_surface_available": .bool(true),

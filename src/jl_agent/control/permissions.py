@@ -50,6 +50,27 @@ _ALWAYS_CONFIRM = {
 }
 _NEVER_UNATTENDED = _ALWAYS_CONFIRM
 _SENSITIVE_SCOPES = {"screen.capture", "input.control"}
+_COMPUTER_USE_REQUIRED_SCOPES = {
+    "capture": frozenset({"screen.capture"}),
+    "list_apps": frozenset({"local.read"}),
+    "list_windows": frozenset({"local.read"}),
+    "wait": frozenset({"local.read"}),
+    "click": frozenset({"input.control"}),
+    "double_click": frozenset({"input.control"}),
+    "right_click": frozenset({"input.control"}),
+    "middle_click": frozenset({"input.control"}),
+    "drag": frozenset({"input.control"}),
+    "scroll": frozenset({"input.control"}),
+    "type": frozenset({"input.control"}),
+    "key": frozenset({"input.control"}),
+    "set_value": frozenset({"input.control"}),
+    "focus_app": frozenset({"input.control"}),
+}
+COMPUTER_USE_MUTATING_ACTIONS = frozenset(
+    action
+    for action, scopes in _COMPUTER_USE_REQUIRED_SCOPES.items()
+    if "input.control" in scopes
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +116,7 @@ class PermissionRiskEngine:
         classes = _classify(requested, proposal.risk_hints)
 
         denial_reasons: list[str] = []
+        denial_reasons.extend(_computer_use_denials(capability, proposal, requested))
         if proposal.upstream_denied:
             denial_reasons.append("Hermes or an upstream boundary denied the action")
         if unknown:
@@ -161,6 +183,38 @@ def _classify(
     }
     classes.update(risk_hints)
     return tuple(sorted(classes, key=_CLASS_ORDER.__getitem__))
+
+
+def _computer_use_denials(
+    capability: CapabilityDescriptor,
+    proposal: ActionProposal,
+    requested: set[str],
+) -> tuple[str, ...]:
+    if capability.id != "core.hermes.computer-use":
+        return ()
+    if proposal.action != "computer_use":
+        return ("computer-use capability must invoke the exact Hermes tool",)
+    inner = proposal.normalized_arguments.get("action")
+    if not isinstance(inner, str) or inner not in _COMPUTER_USE_REQUIRED_SCOPES:
+        return ("computer-use action is missing or unsupported",)
+    required = _COMPUTER_USE_REQUIRED_SCOPES[inner]
+    missing = sorted(required.difference(requested))
+    reasons = []
+    if missing:
+        reasons.append(
+            f"computer-use action requires scopes: {', '.join(missing)}"
+        )
+    if inner in COMPUTER_USE_MUTATING_ACTIONS:
+        app = proposal.normalized_arguments.get("app")
+        if not isinstance(app, str) or not app.strip():
+            reasons.append("mutating computer-use action requires an exact app target")
+        elif proposal.resolved_target != app.strip():
+            reasons.append("computer-use app target does not match resolved target")
+        if not proposal.foreground_app.strip():
+            reasons.append("mutating computer-use action requires foreground context")
+        if proposal.unattended:
+            reasons.append("mutating computer-use action cannot run unattended")
+    return tuple(reasons)
 
 
 def _binding_fingerprint(

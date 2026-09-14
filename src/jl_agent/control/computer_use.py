@@ -11,10 +11,13 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .health import ProbeOutcome
 from .registry import HealthState
+
+if TYPE_CHECKING:
+    from .control_plane import ControlRequest
 
 
 class MacOSPermissionState(StrEnum):
@@ -118,6 +121,83 @@ class ComputerUseReadiness:
 
 CommandRunner = Callable[[Sequence[str], float], subprocess.CompletedProcess[str]]
 DriverResolver = Callable[[], str | None]
+
+
+class ComputerUseTargetIntegrityError(RuntimeError):
+    """Raised when a mutating request no longer targets its approved context."""
+
+
+class MacOSForegroundApplicationProbe:
+    """Read the frontmost app identity without Accessibility or Apple Events."""
+
+    def __init__(
+        self,
+        *,
+        command_runner: CommandRunner | None = None,
+        timeout_seconds: float = 1.0,
+    ) -> None:
+        self._command_runner = command_runner or _run_command
+        self.timeout_seconds = timeout_seconds
+
+    def __call__(self) -> str | None:
+        try:
+            front = self._command_runner(
+                ["/usr/bin/lsappinfo", "front"], self.timeout_seconds
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        asn = (front.stdout or "").strip()
+        if front.returncode != 0 or not asn or "NULL" in asn.upper():
+            return None
+        try:
+            info = self._command_runner(
+                ["/usr/bin/lsappinfo", "info", "-only", "bundleID,name", asn],
+                self.timeout_seconds,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if info.returncode != 0:
+            return None
+        text = info.stdout or ""
+        for key in ("bundleID", "CFBundleIdentifier", "name", "LSDisplayName"):
+            match = re.search(rf'\"?{key}\"?\s*=\s*\"([^\"]+)\"', text)
+            if match:
+                return match.group(1).strip()
+        return None
+
+
+class ComputerUseTargetGuard:
+    """Require a fresh foreground identity before any Hermes input action."""
+
+    def __init__(self, foreground_probe: Callable[[], str | None]) -> None:
+        self.foreground_probe = foreground_probe
+
+    def validate(self, request: "ControlRequest") -> None:
+        from .permissions import COMPUTER_USE_MUTATING_ACTIONS
+
+        if request.capability_id != "core.hermes.computer-use":
+            return
+        arguments = request.action.normalized_arguments
+        inner = arguments.get("action")
+        if inner not in COMPUTER_USE_MUTATING_ACTIONS:
+            return
+        target = arguments.get("app")
+        if (
+            not isinstance(target, str)
+            or not target.strip()
+            or request.action.resolved_target != target.strip()
+        ):
+            raise ComputerUseTargetIntegrityError("computer-use target is not exact")
+        expected = request.action.foreground_app.strip()
+        observed = self.foreground_probe()
+        if not expected or not observed:
+            raise ComputerUseTargetIntegrityError(
+                "foreground application identity is unavailable"
+            )
+        if expected.casefold() != observed.strip().casefold():
+            raise ComputerUseTargetIntegrityError(
+                "foreground application changed after preparation"
+            )
 
 
 class HermesComputerUseReadinessProbe:

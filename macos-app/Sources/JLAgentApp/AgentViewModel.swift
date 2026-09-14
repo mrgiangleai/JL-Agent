@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import JLAgentCore
 
@@ -126,7 +127,9 @@ final class AgentViewModel: ObservableObject {
     decision = "Evaluating"
     resultText = "Preparing request…"
     let requestID = UUID().uuidString.lowercased()
-    let draft = draft
+    var observedDraft = draft
+    captureForegroundContext(in: &observedDraft)
+    let draft = observedDraft
     activeRequestID = requestID
     activeDraft = draft
     let client = client
@@ -220,13 +223,15 @@ final class AgentViewModel: ObservableObject {
   }
 
   private func executeActiveRequest() async {
-    guard let requestID = activeRequestID, let draft = activeDraft else {
+    guard let requestID = activeRequestID, var observedDraft = activeDraft else {
       handleRequestError(RuntimeClientError.invalidRequest("Prepared request was lost"))
       return
     }
     let client = client
     let callerID = callerID
     let sessionID = sessionID
+    captureForegroundContext(in: &observedDraft)
+    let draft = observedDraft
     do {
       let result = try await Task.detached {
         try client.execute(
@@ -291,4 +296,18 @@ final class AgentViewModel: ObservableObject {
   private func display(_ error: Error) -> String {
     (error as? LocalizedError)?.errorDescription ?? "Request failed safely."
   }
+
+  private func captureForegroundContext(in draft: inout RequestDraft) {
+    guard draft.capabilityID == "core.hermes.computer-use",
+      let action = try? JSONValue.parseObject(draft.argumentsJSON)["action"]?.stringValue,
+      Self.mutatingComputerActions.contains(action)
+    else { return }
+    let application = NSWorkspace.shared.frontmostApplication
+    draft.foregroundApp = application?.bundleIdentifier ?? application?.localizedName ?? ""
+  }
+
+  private static let mutatingComputerActions: Set<String> = [
+    "click", "double_click", "right_click", "middle_click", "drag", "scroll",
+    "type", "key", "set_value", "focus_app",
+  ]
 }

@@ -15,7 +15,11 @@ from .control.approvals import OneTimeApprovalStore
 from .control.audit import AuditLedger
 from .control.auth import FileCredentialProvider
 from .control.codec import decode_control_request
-from .control.computer_use import HermesComputerUseReadinessProbe
+from .control.computer_use import (
+    ComputerUseTargetGuard,
+    HermesComputerUseReadinessProbe,
+    MacOSForegroundApplicationProbe,
+)
 from .control.consent import (
     ConsentCoordinator,
     ConsentSignatureVerifier,
@@ -213,6 +217,9 @@ def build_runtime_service(
         approvals=approvals,
         adapter=adapter,
         audit=audit,
+        target_validator=ComputerUseTargetGuard(
+            MacOSForegroundApplicationProbe()
+        ).validate,
     )
     credentials = FileCredentialProvider(paths.credential)
     credentials.load_or_create()

@@ -20,6 +20,7 @@ class ExecutionErrorCategory(StrEnum):
     STALE_PREPARATION = "stale_preparation"
     DUPLICATE_EXECUTION = "duplicate_execution"
     ROUTING_MISMATCH = "routing_mismatch"
+    TARGET_CONTEXT_CHANGED = "target_context_changed"
     UPSTREAM_DENIED = "upstream_denied"
     PROVIDER_ERROR = "provider_error"
     INVALID_REQUEST = "invalid_request"

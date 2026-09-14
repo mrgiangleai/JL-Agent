@@ -73,6 +73,7 @@ class ExecutionGate:
         preparation_ttl_seconds: float = 30.0,
         max_prepared_records: int = 1024,
         clock: Callable[[], float] = time.monotonic,
+        target_validator: Callable[[ControlRequest], None] | None = None,
     ) -> None:
         if not 0 < preparation_ttl_seconds <= 300:
             raise ValueError("preparation TTL must be within 5 minutes")
@@ -85,6 +86,7 @@ class ExecutionGate:
         self.preparation_ttl_seconds = preparation_ttl_seconds
         self.max_prepared_records = max_prepared_records
         self._clock = clock
+        self.target_validator = target_validator
         self._authority = object()
         self._prepared: dict[str, PreparedExecution] = {}
         self._lock = threading.Lock()
@@ -316,6 +318,11 @@ class ExecutionGate:
             return ExecutionErrorCategory.STALE_PREPARATION
         if fresh.invocation != invocation:
             return ExecutionErrorCategory.ROUTING_MISMATCH
+        if self.target_validator is not None:
+            try:
+                self.target_validator(current_request)
+            except (RuntimeError, ValueError):
+                return ExecutionErrorCategory.TARGET_CONTEXT_CHANGED
         return None
 
     def _require_matching_approval(

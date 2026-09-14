@@ -364,6 +364,21 @@ class ExecutionGateTests(unittest.TestCase):
             repeated.error_code, ExecutionErrorCategory.DUPLICATE_EXECUTION.value
         )
 
+    def test_target_validator_denial_stops_before_hermes(self) -> None:
+        def changed_target(_request: ControlRequest) -> None:
+            raise RuntimeError("foreground changed")
+
+        self.gate.target_validator = changed_target
+        self.assertTrue(self.handler(self.envelope("prepare")).ok)
+
+        denied = self.handler(self.envelope("execute"))
+
+        self.assertEqual(
+            denied.error_code,
+            ExecutionErrorCategory.TARGET_CONTEXT_CHANGED.value,
+        )
+        self.assertEqual(self.runtime.requests, [])
+
 
 if __name__ == "__main__":
     unittest.main()

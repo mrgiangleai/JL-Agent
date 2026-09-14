@@ -33,12 +33,19 @@ struct ContentView: View {
             TextField("Action", text: $viewModel.draft.action)
           }
           GridRow {
-            Text("Permission")
-            TextField("Permission scope", text: $viewModel.draft.requestedPermission)
+            Text("Permissions")
+            TextField(
+              "Comma-separated permission scopes",
+              text: $viewModel.draft.requestedPermission
+            )
           }
           GridRow {
             Text("Target")
             TextField("Resolved target", text: $viewModel.draft.resolvedTarget)
+          }
+          GridRow {
+            Text("Foreground")
+            TextField("Observed foreground app", text: $viewModel.draft.foregroundApp)
           }
         }
         Text("Arguments (JSON object)")

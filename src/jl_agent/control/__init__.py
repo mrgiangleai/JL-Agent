@@ -23,10 +23,13 @@ from .control_plane import (
 )
 from .computer_use import (
     ComputerUseReadiness,
+    ComputerUseTargetGuard,
+    ComputerUseTargetIntegrityError,
     HermesComputerUseReadinessProbe,
     MacOSPermissionKind,
     MacOSPermissionState,
     MacOSPermissionStatus,
+    MacOSForegroundApplicationProbe,
 )
 from .execution import (
     AuthenticatedExecutionContext,
@@ -113,6 +116,8 @@ __all__ = [
     "CapabilityRegistry",
     "CapabilityType",
     "ComputerUseReadiness",
+    "ComputerUseTargetGuard",
+    "ComputerUseTargetIntegrityError",
     "ConfigurationRequirements",
     "ControlPathResult",
     "ControlPlaneError",
@@ -158,6 +163,7 @@ __all__ = [
     "MacOSPermissionKind",
     "MacOSPermissionState",
     "MacOSPermissionStatus",
+    "MacOSForegroundApplicationProbe",
     "OneTimeApprovalStore",
     "PROTOCOL_VERSION",
     "ProbeOutcome",

@@ -55,9 +55,10 @@ enum NativeContractTests {
     try consentPayloadCannotCarryWildcardApproval()
     try activityRejectsSensitiveFields()
     try computerUsePermissionStatusIsStructured()
+    try computerUseRequestBindsScopesTargetAndForeground()
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
-    print("8 native contract tests passed")
+    print("9 native contract tests passed")
   }
 
   private static func runIntegrationCommand(_ arguments: [String]) throws {
@@ -302,6 +303,57 @@ enum NativeContractTests {
     try check(
       status.computerUse.permissions.first?.state == "unknown",
       "permission state was not preserved"
+    )
+  }
+
+  private static func computerUseRequestBindsScopesTargetAndForeground() throws {
+    let transport = StubTransport { request in
+      let envelope = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "computer-use envelope is malformed"
+      )
+      let payload = try require(
+        envelope["payload"] as? [String: Any],
+        "computer-use payload is malformed"
+      )
+      let action = try require(
+        payload["action"] as? [String: Any],
+        "computer-use action is malformed"
+      )
+      try check(
+        action["requested_permissions"] as? [String] == [
+          "input.control", "external.send",
+        ],
+        "computer-use scopes were not preserved"
+      )
+      try check(
+        action["resolved_target"] as? String == "com.apple.TextEdit",
+        "computer-use target was not bound"
+      )
+      try check(
+        action["foreground_app"] as? String == "com.jlagent.control",
+        "foreground context was not bound"
+      )
+      return try response(
+        for: request,
+        ok: true,
+        result: ["state": "prepared"],
+        error: nil
+      )
+    }
+    var draft = RequestDraft()
+    draft.capabilityID = "core.hermes.computer-use"
+    draft.action = "computer_use"
+    draft.argumentsJSON = "{\"action\":\"type\",\"app\":\"com.apple.TextEdit\"}"
+    draft.requestedPermission = "input.control, external.send"
+    draft.resolvedTarget = "com.apple.TextEdit"
+    draft.foregroundApp = "com.jlagent.control"
+
+    _ = try makeClient(transport: transport).prepare(
+      draft: draft,
+      requestID: "computer-use-request",
+      callerID: "native-app",
+      sessionID: "session-1"
     )
   }
 

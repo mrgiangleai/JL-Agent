@@ -6,11 +6,16 @@ import unittest
 from pathlib import Path
 
 from jl_agent.control.computer_use import (
+    ComputerUseTargetGuard,
+    ComputerUseTargetIntegrityError,
     HermesComputerUseReadinessProbe,
     MacOSPermissionKind,
     MacOSPermissionState,
 )
+from jl_agent.control.control_plane import ControlRequest
+from jl_agent.control.permissions import ActionProposal
 from jl_agent.control.registry import HealthState
+from jl_agent.control.router import RouteRequest, TaskCategory
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -120,6 +125,47 @@ class ComputerUseReadinessTests(unittest.TestCase):
         ).inspect()
 
         self.assertEqual(readiness.health_probe().state, HealthState.DISABLED)
+        self.assertEqual(calls, [])
+
+    def test_target_guard_rejects_missing_or_changed_foreground_context(self) -> None:
+        request = ControlRequest(
+            capability_id="core.hermes.computer-use",
+            action=ActionProposal(
+                action="computer_use",
+                normalized_arguments={"action": "click", "app": "com.apple.TextEdit"},
+                requested_permissions=("input.control",),
+                resolved_target="com.apple.TextEdit",
+                foreground_app="com.jlagent.control",
+            ),
+            route=RouteRequest(
+                category=TaskCategory.SIMPLE, required_abilities=frozenset()
+            ),
+            candidates=(),
+        )
+        ComputerUseTargetGuard(lambda: "com.jlagent.control").validate(request)
+
+        with self.assertRaises(ComputerUseTargetIntegrityError):
+            ComputerUseTargetGuard(lambda: "com.apple.Safari").validate(request)
+        with self.assertRaises(ComputerUseTargetIntegrityError):
+            ComputerUseTargetGuard(lambda: None).validate(request)
+
+    def test_target_guard_does_not_probe_for_passive_capture(self) -> None:
+        calls = []
+        request = ControlRequest(
+            capability_id="core.hermes.computer-use",
+            action=ActionProposal(
+                action="computer_use",
+                normalized_arguments={"action": "capture", "mode": "ax"},
+                requested_permissions=("screen.capture",),
+            ),
+            route=RouteRequest(
+                category=TaskCategory.SIMPLE, required_abilities=frozenset()
+            ),
+            candidates=(),
+        )
+
+        ComputerUseTargetGuard(lambda: calls.append("probe")).validate(request)
+
         self.assertEqual(calls, [])
 
 

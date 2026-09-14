@@ -120,6 +120,7 @@ CAPABILITY_SPECS = (
         module_path="tools/computer_use_tool.py",
         evidence='name="computer_use"',
         permissions=(
+            "local.read",
             "screen.capture",
             "input.control",
             "local.delete",
