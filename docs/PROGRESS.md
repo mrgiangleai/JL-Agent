@@ -17,24 +17,33 @@ Last updated: 2026-09-14 ICT
   remain fail-closed.
 - Consent key loss no longer silently creates a replacement enrollment; explicit
   rotation and runtime restart remain required.
-- The current host is intentionally stopped before Cua installation/TCC. No live
-  GUI smoke test has run.
+- Official Cua Driver v0.28.0 is installed under the signed
+  `com.trycua.driver` / `YCK386LBJ7` identity; the user granted its required
+  Accessibility and Screen Recording permissions.
+- The authoritative readiness gate passed with current consent enrollment,
+  healthy computer-use status, and `execution_ready=true`.
+- Exact request `5ce6215c-2aab-4d80-9807-0b23a7d370b9` completed one read-only
+  AX capture through the full production path in 18,619 ms. It was not retried.
+- Direct gate-authorized dispatch no longer constructs an LLM `AIAgent`;
+  expired consent terminates denied; only execute responses use the bounded
+  90-second client deadline.
+- Phase 4C is complete. Phase 5 has not started.
 
 ## Phase 4C sequential status
 
 | Step | Status | Evidence |
 |---|---|---|
 | 1 — Host contract re-audit | COMPLETE | Pinned Hermes symbols plus official Cua source, process, manifest, signing, TCC, install, and build contracts recorded. |
-| 2 — Safe provisioning workflow | PREPARED | Exact v0.28.0 installer/helper/archive SHA values and staged official signature passed; persistent host install not authorized. |
-| 3 — Host identity/signing | COMPLETE IN REPO | Official Cua identity enforced; JL signing override supported; host has no Apple signing identity, so JL build remains ad-hoc. |
-| 4 — TCC onboarding | COMPLETE IN REPO | Runtime-owned identity/TCC fields, exact reasons, Settings links, Recheck, and relaunch guidance. |
-| 5 — Runtime lifecycle | COMPLETE IN REPO | Stable foreground entry point/status; existing stale/duplicate/graceful invariants preserved. |
-| 6 — Consent stability | COMPLETE IN REPO | Public fingerprint binding, lost-key refusal, explicit rotation/restart, and regression tests. |
-| 7 — Live readiness gate | COMPLETE IN REPO | Hermes/auth/policy/consent/driver/app/signing/TCC all required; unknown fails closed. |
-| 8 — Live GUI smoke | BLOCKED ON HOST | Driver is absent and TCC unavailable; no GUI action attempted. |
-| 9 — Adversarial tests | COMPLETE IN REPO | Missing/incompatible/unreachable/wrong identity/TCC/lifecycle/enrollment/drift/replay/bypass cases covered deterministically. |
-| 10 — Validation | PARTIAL | 103 backend and 10 native tests, lint/type/dependency/build/sign checks pass; live host checks wait for install/TCC. |
-| 11 — Documentation | PAUSED HANDOFF | Report, host setup, architecture/security/progress, and paused handoff are current; final live result and closeout remain. |
+| 2 — Safe provisioning workflow | COMPLETE | Exact v0.28.0 assets verified; official signed app and CLI installed through the reviewed workflow. |
+| 3 — Host identity/signing | COMPLETE | Official Cua identity enforced; JL remains an ad-hoc local client and is not the TCC owner. |
+| 4 — TCC onboarding | COMPLETE | User granted Accessibility and Screen Recording only to CuaDriver; no automated TCC mutation. |
+| 5 — Runtime lifecycle | COMPLETE | Stable foreground entry point/status; existing stale/duplicate/graceful invariants preserved. |
+| 6 — Consent stability | COMPLETE | Public fingerprint binding, lost-key refusal, exact replay defense, and explicit expired-consent denial. |
+| 7 — Live readiness gate | COMPLETE | Hermes/auth/policy/consent/driver/app/signing/TCC all healthy; `execution_ready=true`. |
+| 8 — Live GUI smoke | COMPLETE | One accepted AX capture reached backend `execution_completed` through JL, Hermes, and CuaDriver; no retry. |
+| 9 — Adversarial tests | COMPLETE | Missing/incompatible/unreachable/wrong identity/TCC/lifecycle/enrollment/drift/replay/bypass cases covered deterministically. |
+| 10 — Validation | COMPLETE | 106 backend and 13 native tests plus lint/type/dependency/build/sign/secret/diff checks pass. |
+| 11 — Documentation | COMPLETE | Final report, progress, host setup, and fresh-context handoff record the accepted boundary. |
 
 ## Phase 4B current state
 
@@ -178,8 +187,7 @@ Secret, pin/submodule, Git sync, and artifact checks passed. The approximately
 
 ## Next action
 
-Phase 4B is complete. Do not begin another phase without a new explicit brief.
-The recommended next boundary is production native lifecycle and stable
-signed-app consent-key enrollment. Voice, autonomous/multi-step computer use,
-LaunchAgent, local models, cloud services, accounts, telemetry, and distribution
-remain deferred until explicitly scoped.
+Phase 4C is complete. Do not begin Phase 5 or any other phase without a new
+explicit brief. Do not repeat the accepted live smoke. Autonomous/multi-step
+computer use, voice, LaunchAgent, local models, cloud services, accounts,
+telemetry, and distribution remain deferred until explicitly scoped.

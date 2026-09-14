@@ -1,7 +1,8 @@
 # Phase 4C report
 
-Status: paused before authorized host installation/TCC; live GUI validation has
-not run.
+Status: complete. Official Cua host provisioning, user-granted TCC, the
+authoritative readiness gate, and one exact policy-gated live AX capture all
+passed. Phase 5 has not started.
 
 ## Scope boundary
 
@@ -139,20 +140,18 @@ produces a separate local identity (`com.trycua.driver.local`) unless stable
 signing is available. It is useful for Cua development, not a substitute for
 the official signed release required for stable JL TCC enrollment.
 
-## Current stop boundary
+## Authorized host provisioning outcome
 
-No driver package was downloaded or installed, no app was registered with
-LaunchServices, no driver process was started, and no TCC prompt was triggered.
-Host provisioning writes outside this repository and will be performed only
-after the repository-side workflow is reviewed and the user explicitly runs or
-authorizes it. Accessibility and Screen Recording will remain user-granted in
-System Settings; Phase 4C will stop before those grants if they become the next
-required action.
+After explicit authorization, the reviewed installer placed the official
+`CuaDriver.app` at `/Applications/CuaDriver.app` and its CLI at
+`~/.local/bin/cua-driver`. The installed v0.28.0 bundle is identified as
+`com.trycua.driver`, signed by team `YCK386LBJ7`, uses Hardened Runtime, and
+passes signature/notarization and pinned-Hermes manifest compatibility checks.
 
-The repository-only preflight did download verified assets into an exact
-temporary directory and removed them after inspection. The sentence above
-refers to persistent host provisioning: no driver package or app remains
-installed.
+The user manually granted Accessibility and Screen Recording to CuaDriver.
+JL Agent, Terminal, Codex, and Python were not granted computer-use TCC. No
+System Settings automation, `tccutil`, unsigned-driver override, unrestricted
+mode, or TCC bypass was used.
 
 ## Stable host identity and signing
 
@@ -205,6 +204,31 @@ service is not required. Manifest reachability is required. Unknown, denied,
 missing, incompatible, unsigned, wrong-team, stale-enrollment, and
 restart-required states all remain not ready.
 
+## Live-path corrections
+
+The first authorized AX capture exposed a production adapter defect: an exact
+gate-authorized tool call constructed the full Hermes `AIAgent`, so the inert
+`native-validation` route was treated as an LLM provider before tool dispatch.
+Commit `ec7f646` replaced that construction with pinned Hermes'
+`model_tools.handle_function_call`, preserving request middleware,
+pre-dispatch guards, execution middleware, registry dispatch, tool/toolset
+constraints, native `computer_use`, and Hermes denial behavior. No generic raw
+tool endpoint or provider was added.
+
+A later manual attempt correctly hit the 30-second consent replay defense after
+its challenge expired. Commit `554d77d` makes expired consent return
+`consent_expired`, terminates its linked request denied without issuing an
+approval, and prevents the native client from signing or submitting an expired
+challenge. Genuine approved/rejected reuse remains `consent_replayed`.
+
+The successful backend smoke then revealed only a client presentation defect:
+the native AF_UNIX client stopped waiting after two seconds while the first
+lazy Hermes/Cua startup legitimately continued. Commit `b07e3bb` retains the
+two-second timeout for status, activity, prepare, and consent, while giving
+only `execute` a bounded 90-second response deadline. The backend request had
+already completed successfully once, so the user explicitly prohibited a
+post-fix live retry.
+
 ## Foreground runtime lifecycle
 
 Phase 4C keeps the foreground user-session process and does not add a
@@ -221,20 +245,21 @@ identity on shutdown. The Swift app does not spawn Python because that would
 embed brittle checkout and environment assumptions; it shows running/unreachable
 state and the authenticated runtime PID instead.
 
-## Focused validation so far
+## Final validation
 
-Sequential checks completed before host installation:
+Sequential checks completed after the live-path corrections:
 
 ```text
-Provisioning asset SHA/signature audit             passed
-Focused backend readiness/lifecycle/consent tests  20 passed
-All JL-owned backend tests                         103 passed
+Provisioning and installed signature/manifest      passed
+All JL-owned backend tests                         106 passed
 Ruff                                                 passed
 ty                                                   passed
 pip check                                            passed
 Swift format lint                                    passed
-Native deterministic contract tests                 10 passed
+Native deterministic contract tests                 13 passed
 Native release build and ad-hoc signature            passed
+Secret-pattern and Git diff checks                    passed
+Hermes pin and submodule cleanliness                  passed
 ```
 
 The focused adversarial coverage includes absent/unreachable/incompatible
@@ -244,8 +269,32 @@ override rejection, execution while health is not ready, post-consent action
 mutation, foreground drift, replay, and native/direct-driver surface exclusion.
 The full Hermes suite was not run.
 
-## Live GUI smoke status
+## Live GUI smoke result
 
-Not performed. The authoritative readiness gate is false because no installed
-Cua Driver host or TCC grants exist. No screenshot, pointer movement, click,
-typing, System Settings mutation, or direct-driver proof was attempted.
+PASS at the authoritative backend boundary. The user manually sent and
+approved exactly one final safe request:
+
+```text
+Capability: core.hermes.computer-use
+Action: computer_use
+Permissions: screen.capture
+Target: com.jlagent.control
+Foreground: com.jlagent.control
+Arguments: {"action":"capture","mode":"ax","app":"com.jlagent.control"}
+Target is within workspace: OFF
+Reversible: ON
+```
+
+Audit request `5ce6215c-2aab-4d80-9807-0b23a7d370b9` records
+`execution_prepared -> execution_started -> execution_completed`, with the
+exact approval consumed once and a duration of 18,619 ms. The call traversed
+authenticated IPC, JL policy and signed native consent, final execution-gate
+revalidation, the corrected Hermes dispatcher, pinned native `computer_use`,
+and CuaDriver. CuaDriver's MCP child started during the cold path and the AX
+capture completed without an upstream error.
+
+The UI reported a timeout because its old two-second response deadline elapsed
+before the successful server response. That false client failure is corrected
+and covered deterministically by the 13-test native suite. No second backend
+execution was attempted after this successful request, no pointer or keyboard
+action was used, and Phase 5 was not started.
