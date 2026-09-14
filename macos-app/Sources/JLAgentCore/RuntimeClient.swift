@@ -32,6 +32,16 @@ public enum RuntimeClientError: Error, Equatable, LocalizedError, Sendable {
   }
 }
 
+public enum RuntimeStatusSnapshotPolicy {
+  public static func shouldRetain(after error: Error) -> Bool {
+    guard let runtimeError = error as? RuntimeClientError else { return false }
+    if case .server(let code, _) = runtimeError {
+      return code != "authentication_failed"
+    }
+    return false
+  }
+}
+
 public struct PrepareResult: Equatable, Sendable {
   public let state: String
   public let challenge: ConsentChallenge?

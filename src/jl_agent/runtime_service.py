@@ -32,7 +32,7 @@ from .control.consent import (
 )
 from .control.control_plane import JLControlPlane
 from .control.execution import ExecutionGate
-from .control.execution_adapter import HermesAIAgentRuntime, HermesExecutionAdapter
+from .control.execution_adapter import HermesExecutionAdapter, HermesToolRuntime
 from .control.hermes_projection import HERMES_REVISION, HermesProjection
 from .control.ipc import UnixSocketServer
 from .control.request_state import SecureControlRequestHandler
@@ -281,7 +281,7 @@ def build_runtime_service(
     )
     audit = AuditLedger(paths.audit)
     adapter = HermesExecutionAdapter(
-        HermesAIAgentRuntime(root / "upstream" / "hermes-agent")
+        HermesToolRuntime(root / "upstream" / "hermes-agent")
     )
     gate = ExecutionGate(
         control_plane=control_plane,

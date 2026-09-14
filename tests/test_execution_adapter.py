@@ -8,11 +8,11 @@ from unittest.mock import patch
 from jl_agent.control.control_plane import HermesInvocationProjection
 from jl_agent.control.execution_adapter import (
     ExecutionErrorCategory,
-    HermesAIAgentRuntime,
     HermesExecutionAdapter,
     HermesExecutionStatus,
     HermesRuntimeRequest,
     HermesRuntimeResult,
+    HermesToolRuntime,
     _AuthorizedHermesCommand,
 )
 
@@ -116,26 +116,26 @@ class HermesExecutionAdapterTests(unittest.TestCase):
         )
         self.assertEqual(runtime.requests, [])
 
-    def test_aia_agent_runtime_uses_hermes_exact_tool_dispatch(self) -> None:
-        constructor: dict[str, object] = {}
+    def test_tool_runtime_uses_exact_middleware_preserving_dispatch(self) -> None:
         dispatched: dict[str, object] = {}
 
-        class FakeAgent:
-            def __init__(self, **kwargs: object) -> None:
-                constructor.update(kwargs)
-
-        def invoke_tool(
-            agent: object, name: str, arguments: dict[str, object], task_id: str
+        def dispatch(
+            name: str,
+            arguments: dict[str, object],
+            task_id: str,
+            **kwargs: object,
         ) -> str:
             dispatched.update(
-                agent=agent, name=name, arguments=arguments, task_id=task_id
+                name=name, arguments=arguments, task_id=task_id, **kwargs
             )
             return '{"content":"safe result"}'
 
-        runtime = HermesAIAgentRuntime("/pinned/hermes", agent_loader=lambda: FakeAgent)
+        runtime = HermesToolRuntime(
+            "/pinned/hermes", dispatcher_loader=lambda: dispatch
+        )
         request = HermesRuntimeRequest(
-            provider="provider-a",
-            model="model-a",
+            provider="native-validation",
+            model="deterministic-boundary",
             fallback_routes=(("provider-b", "model-b"),),
             enabled_toolsets=("file",),
             allowed_tool="read_file",
@@ -143,20 +143,60 @@ class HermesExecutionAdapterTests(unittest.TestCase):
             task_id="request-1",
             arguments_json='{ "path": "README.md" }',
         )
-        with patch(
-            "jl_agent.control.execution_adapter.importlib.import_module",
-            return_value=SimpleNamespace(invoke_tool=invoke_tool),
-        ):
-            result = runtime.run(request)
+        result = runtime.run(request)
 
         self.assertEqual(result.status, HermesExecutionStatus.COMPLETED)
-        self.assertEqual(constructor["provider"], "provider-a")
-        self.assertEqual(
-            constructor["fallback_model"],
-            [{"provider": "provider-b", "model": "model-b"}],
-        )
         self.assertEqual(dispatched["name"], "read_file")
         self.assertEqual(dispatched["arguments"], {"path": "README.md"})
+        self.assertEqual(dispatched["task_id"], "request-1")
+        self.assertEqual(dispatched["session_id"], "session-1")
+        self.assertEqual(dispatched["enabled_tools"], ["read_file"])
+        self.assertEqual(dispatched["enabled_toolsets"], ["file"])
+        self.assertEqual(dispatched["disabled_toolsets"], [])
+
+    def test_tool_runtime_loader_uses_public_dispatcher_without_agent_import(
+        self,
+    ) -> None:
+        dispatcher = object()
+        runtime = HermesToolRuntime("/pinned/hermes")
+
+        with patch(
+            "jl_agent.control.execution_adapter.importlib.import_module",
+            return_value=SimpleNamespace(handle_function_call=dispatcher),
+        ) as import_module:
+            loaded = runtime._load_dispatcher()
+
+        self.assertIs(loaded, dispatcher)
+        import_module.assert_called_once_with("model_tools")
+
+    def test_tool_runtime_preserves_hermes_rejection_and_failure(self) -> None:
+        request = HermesRuntimeRequest(
+            provider="unused-provider",
+            model="unused-model",
+            fallback_routes=(),
+            enabled_toolsets=("computer_use",),
+            allowed_tool="computer_use",
+            session_id="session-1",
+            task_id="request-1",
+            arguments_json='{"action":"capture","mode":"ax"}',
+        )
+        denied = HermesToolRuntime(
+            "/pinned/hermes",
+            dispatcher_loader=lambda: (
+                lambda *_args, **_kwargs: '{"error":"blocked","status":"blocked"}'
+            ),
+        ).run(request)
+        failed = HermesToolRuntime(
+            "/pinned/hermes",
+            dispatcher_loader=lambda: (
+                lambda *_args, **_kwargs: '{"error":"driver failed"}'
+            ),
+        ).run(request)
+
+        self.assertEqual(denied.status, HermesExecutionStatus.DENIED)
+        self.assertEqual(denied.error_category, ExecutionErrorCategory.UPSTREAM_DENIED)
+        self.assertEqual(failed.status, HermesExecutionStatus.FAILED)
+        self.assertEqual(failed.error_category, ExecutionErrorCategory.PROVIDER_ERROR)
 
 
 if __name__ == "__main__":

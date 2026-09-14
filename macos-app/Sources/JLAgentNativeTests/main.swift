@@ -56,10 +56,30 @@ enum NativeContractTests {
     try activityRejectsSensitiveFields()
     try computerUsePermissionStatusIsStructured()
     try computerUseRequestBindsScopesTargetAndForeground()
+    try serverExecutionErrorRetainsAuthoritativeRuntimeSnapshot()
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     try missingEnrolledConsentKeyRequiresExplicitRotation()
-    print("10 native contract tests passed")
+    print("11 native contract tests passed")
+  }
+
+  private static func serverExecutionErrorRetainsAuthoritativeRuntimeSnapshot() throws {
+    try check(
+      RuntimeStatusSnapshotPolicy.shouldRetain(
+        after: RuntimeClientError.server(
+          code: "runtime_error", message: "request ended in failed"
+        )
+      ),
+      "execution error discarded the last authoritative runtime snapshot"
+    )
+    try check(
+      !RuntimeStatusSnapshotPolicy.shouldRetain(
+        after: RuntimeClientError.server(
+          code: "authentication_failed", message: "request ended in denied"
+        )
+      ),
+      "authentication failure retained an untrusted runtime snapshot"
+    )
   }
 
   private static func runIntegrationCommand(_ arguments: [String]) throws {

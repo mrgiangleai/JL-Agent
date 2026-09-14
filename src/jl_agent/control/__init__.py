@@ -45,6 +45,7 @@ from .execution_adapter import (
     HermesRuntime,
     HermesRuntimeRequest,
     HermesRuntimeResult,
+    HermesToolRuntime,
 )
 from .health import HealthAssessment, HealthMonitor, ProbeOutcome
 from .hermes_projection import (
@@ -151,6 +152,7 @@ __all__ = [
     "HermesRuntime",
     "HermesRuntimeRequest",
     "HermesRuntimeResult",
+    "HermesToolRuntime",
     "IPCError",
     "IPCProtocolError",
     "IPCRequestEnvelope",

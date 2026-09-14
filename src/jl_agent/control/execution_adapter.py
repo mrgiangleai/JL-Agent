@@ -1,4 +1,4 @@
-"""Thin translation from an exact JL projection to Hermes' public agent surface."""
+"""Thin translation from an exact JL projection to Hermes' public tool surface."""
 
 from __future__ import annotations
 
@@ -170,68 +170,49 @@ class HermesExecutionAdapter:
         )
 
 
-class HermesAIAgentRuntime:
-    """Lazy production bridge to pinned ``AIAgent`` and Hermes tool dispatch.
+class HermesToolRuntime:
+    """Lazy bridge to pinned Hermes' public, middleware-preserving dispatcher.
 
-    No import or provider call occurs until ``run``. Credentials and provider
-    resolution remain wholly owned by Hermes.
+    The exact pinned symbols are ``model_tools.handle_function_call`` ->
+    ``model_tools._apply_request_middleware`` ->
+    ``model_tools._pre_dispatch_guards`` -> ``model_tools._execute_tool`` ->
+    ``hermes_cli.middleware.run_tool_execution_middleware`` ->
+    ``tools.registry.ToolRegistry.dispatch`` ->
+    ``tools.computer_use.tool.handle_computer_use`` (registered by
+    ``tools.computer_use_tool``). The JL adapter has already constrained the
+    tool and toolset before this bridge runs, so no LLM agent, provider client,
+    or generic raw-tool endpoint is needed.
     """
 
     def __init__(
         self,
         hermes_root: str | Path,
         *,
-        agent_loader: Callable[[], type[Any]] | None = None,
+        dispatcher_loader: Callable[[], Callable[..., Any]] | None = None,
     ) -> None:
         self.hermes_root = Path(hermes_root)
-        self._agent_loader = agent_loader or self._load_agent
+        self._dispatcher_loader = dispatcher_loader or self._load_dispatcher
 
-    def _load_agent(self) -> type[Any]:
+    def _load_dispatcher(self) -> Callable[..., Any]:
         root = str(self.hermes_root)
         if root not in sys.path:
             sys.path.insert(0, root)
-        module = importlib.import_module("run_agent")
-        return module.AIAgent
+        module = importlib.import_module("model_tools")
+        return module.handle_function_call
 
     def run(self, request: HermesRuntimeRequest) -> HermesRuntimeResult:
-        agent_type = self._agent_loader()
-        allowed_providers = list(
-            dict.fromkeys(
-                [
-                    request.provider,
-                    *(provider for provider, _ in request.fallback_routes),
-                ]
-            )
-        )
-        fallback = [
-            {"provider": provider, "model": model}
-            for provider, model in request.fallback_routes
-        ]
-        agent = agent_type(
-            provider=request.provider,
-            requested_provider=request.provider,
-            model=request.model,
-            fallback_model=fallback,
-            providers_allowed=allowed_providers,
-            providers_order=allowed_providers,
-            enabled_toolsets=list(request.enabled_toolsets),
-            session_id=request.session_id,
-            platform="jl-runtime",
-            quiet_mode=True,
-            save_trajectories=False,
-            max_iterations=20,
-            skip_context_files=True,
-            skip_background_review=True,
-        )
         arguments = json.loads(request.arguments_json)
         if not isinstance(arguments, dict):
             raise ValueError("Hermes action arguments must be an object")
-        helpers = importlib.import_module("agent.agent_runtime_helpers")
-        raw_result = helpers.invoke_tool(
-            agent,
+        dispatcher = self._dispatcher_loader()
+        raw_result = dispatcher(
             request.allowed_tool,
             arguments,
             request.task_id,
+            session_id=request.session_id,
+            enabled_tools=[request.allowed_tool],
+            enabled_toolsets=list(request.enabled_toolsets),
+            disabled_toolsets=[],
         )
         if not isinstance(raw_result, str):
             raw_result = json.dumps(raw_result, ensure_ascii=False, default=str)
@@ -256,3 +237,7 @@ class HermesAIAgentRuntime:
             HermesExecutionStatus.COMPLETED,
             output=raw_result,
         )
+
+
+# Compatibility for existing JL imports. This alias no longer constructs AIAgent.
+HermesAIAgentRuntime = HermesToolRuntime

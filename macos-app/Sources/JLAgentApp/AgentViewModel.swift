@@ -278,8 +278,11 @@ final class AgentViewModel: ObservableObject {
   }
 
   private func apply(_ error: Error) {
-    runtimePID = nil
-    consentIdentityMatches = false
+    if !RuntimeStatusSnapshotPolicy.shouldRetain(after: error) {
+      runtimePID = nil
+      computerUseStatus = nil
+      consentIdentityMatches = false
+    }
     if case RuntimeClientError.server(let code, _) = error,
       code == "authentication_failed"
     {
