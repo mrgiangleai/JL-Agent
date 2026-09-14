@@ -5,10 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from jl_agent.control.auth import FileCredentialProvider
 from jl_agent.runtime_service import (
     JLRuntimeService,
     RuntimePaths,
     build_runtime_service,
+    main,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,6 +76,19 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
         self.assertTrue(composed.paths.credential.exists())
         self.assertTrue(composed.paths.audit.exists())
         composed.shutdown()
+
+    def test_stopped_runtime_credential_can_rotate_without_exposure(self) -> None:
+        root = Path(self.temporary.name) / "rotation"
+        provider = FileCredentialProvider(root / "ipc.credential")
+        original = provider.load_or_create()
+
+        self.assertEqual(
+            main(["--runtime-dir", str(root), "--rotate-credential"]), 0
+        )
+
+        rotated = provider.load_or_create()
+        self.assertNotEqual(rotated, original)
+        self.assertTrue(provider.authenticate(rotated))
 
 
 if __name__ == "__main__":

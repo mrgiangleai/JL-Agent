@@ -45,6 +45,10 @@ enum NativeContractTests {
   )
 
   static func main() throws {
+    if CommandLine.arguments.count > 1 {
+      try runIntegrationCommand(Array(CommandLine.arguments.dropFirst()))
+      return
+    }
     try missingCredentialFailsBeforeTransport()
     try authenticationFailureIsStructured()
     try malformedAndUnsupportedResponsesFailSafely()
@@ -53,6 +57,73 @@ enum NativeContractTests {
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     print("7 native contract tests passed")
+  }
+
+  private static func runIntegrationCommand(_ arguments: [String]) throws {
+    guard arguments.count == 4 else {
+      throw TestFailure(
+        description: "integration command requires mode, runtime root, service, tag"
+      )
+    }
+    let mode = arguments[0]
+    let paths = RuntimePaths(root: URL(fileURLWithPath: arguments[1]))
+    let credentials = KeychainCredentialProvider(
+      service: arguments[2], account: "native-ipc-smoke"
+    )
+    let signer = ConsentSigningKey(tag: arguments[3])
+    if mode == "provision" {
+      _ = try credentials.loadOrImport(from: paths.credential)
+      _ = try signer.provisionPublicKey(at: paths.consentPublicKey)
+      print("native IPC smoke credentials provisioned")
+      return
+    }
+    if mode == "cleanup" {
+      try credentials.remove()
+      try signer.remove()
+      print("native IPC smoke Keychain items removed")
+      return
+    }
+    guard mode == "smoke" else {
+      throw TestFailure(description: "unknown integration command")
+    }
+
+    let client = JLRuntimeClient(paths: paths, credentials: credentials)
+    let caller = "native-ipc-smoke"
+    let session = "native-ipc-smoke-session"
+    let status = try client.status(callerID: caller, sessionID: session)
+    try check(status.ready && status.consentAvailable, "runtime was not consent-ready")
+    var draft = RequestDraft()
+    draft.action = "write_file"
+    draft.argumentsJSON = "{\"path\":\"/outside/native-smoke\",\"content\":\"safe\"}"
+    draft.requestedPermission = "local.write.reversible"
+    draft.resolvedTarget = "/outside/native-smoke"
+    draft.targetWithinWorkspace = false
+    let requestID = "native-ipc-smoke-request"
+    let prepared = try client.prepare(
+      draft: draft,
+      requestID: requestID,
+      callerID: caller,
+      sessionID: session
+    )
+    let pending = try require(prepared.challenge, "runtime did not request consent")
+    let signature = try signer.sign(challenge: pending, decision: .approve)
+    let consentState = try client.submitConsent(
+      challenge: pending,
+      decision: .approve,
+      signature: signature
+    )
+    try check(consentState == "prepared", "trusted consent did not prepare")
+    let result = try client.execute(
+      draft: draft,
+      requestID: requestID,
+      callerID: caller,
+      sessionID: session
+    )
+    try check(result.state == "completed", "execution did not complete")
+    try check(result.output == "native-ipc-smoke-ok", "unexpected fake output")
+    let activity = try client.activity(callerID: caller, sessionID: session)
+    try check(!activity.isEmpty, "safe activity was empty")
+    print("native protocol-v1 AF_UNIX consent smoke passed")
   }
 
   private static func missingCredentialFailsBeforeTransport() throws {
@@ -128,6 +199,14 @@ enum NativeContractTests {
         JSONSerialization.jsonObject(with: request) as? [String: Any],
         "consent envelope is malformed"
       )
+      try check(
+        Set(object.keys) == [
+          "protocol_version", "request_id", "caller_id", "session_id",
+          "operation", "payload", "credential",
+        ],
+        "consent envelope omitted protocol fields"
+      )
+      try check(object["credential"] is NSNull, "consent credential was not null")
       let payload = try require(
         object["payload"] as? [String: Any],
         "consent payload is malformed"

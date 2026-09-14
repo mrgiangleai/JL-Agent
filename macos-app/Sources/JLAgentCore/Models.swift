@@ -20,6 +20,21 @@ public struct RequestEnvelope: Codable, Equatable, Sendable {
     case sessionID = "session_id"
     case operation, payload, credential
   }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(protocolVersion, forKey: .protocolVersion)
+    try container.encode(requestID, forKey: .requestID)
+    try container.encode(callerID, forKey: .callerID)
+    try container.encode(sessionID, forKey: .sessionID)
+    try container.encode(operation, forKey: .operation)
+    try container.encode(payload, forKey: .payload)
+    if let credential {
+      try container.encode(credential, forKey: .credential)
+    } else {
+      try container.encodeNil(forKey: .credential)
+    }
+  }
 }
 
 public struct ResponseError: Codable, Equatable, Sendable {

@@ -161,6 +161,7 @@ public struct UnixSocketTransport: IPCTransport {
     let result = Darwin.poll(&item, 1, milliseconds)
     if result == 0 { throw RuntimeClientError.timeout }
     if result < 0, errno == EINTR { return }
+    if result > 0, item.revents & events != 0 { return }
     let failures = Int16(POLLERR | POLLHUP | POLLNVAL)
     guard result > 0, item.revents & failures == 0 else {
       throw RuntimeClientError.transport("Runtime connection closed")
