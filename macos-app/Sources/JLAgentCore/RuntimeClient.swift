@@ -73,6 +73,7 @@ public struct JLRuntimeClient: Sendable {
   private let credentials: any CredentialProviding
   private let transport: any IPCTransport
   private let timeout: TimeInterval
+  private let executionTimeout: TimeInterval
   private let maximumBytes: Int
 
   public init(
@@ -80,12 +81,14 @@ public struct JLRuntimeClient: Sendable {
     credentials: any CredentialProviding = KeychainCredentialProvider(),
     transport: any IPCTransport = UnixSocketTransport(),
     timeout: TimeInterval = defaultTimeoutSeconds,
+    executionTimeout: TimeInterval = executionResponseTimeoutSeconds,
     maximumBytes: Int = maximumMessageBytes
   ) {
     self.paths = paths
     self.credentials = credentials
     self.transport = transport
     self.timeout = timeout
+    self.executionTimeout = executionTimeout
     self.maximumBytes = maximumBytes
   }
 
@@ -156,7 +159,8 @@ public struct JLRuntimeClient: Sendable {
       payload: draft.payload(),
       requestID: requestID,
       callerID: callerID,
-      sessionID: sessionID
+      sessionID: sessionID,
+      responseTimeout: executionTimeout
     )
     guard let state = result["state"]?.stringValue else {
       throw RuntimeClientError.malformedResponse
@@ -199,7 +203,8 @@ public struct JLRuntimeClient: Sendable {
     payload: [String: JSONValue],
     requestID: String = UUID().uuidString.lowercased(),
     callerID: String,
-    sessionID: String
+    sessionID: String,
+    responseTimeout: TimeInterval? = nil
   ) throws -> [String: JSONValue] {
     let credential = try credentials.loadCredential()
     return try request(
@@ -212,13 +217,15 @@ public struct JLRuntimeClient: Sendable {
         operation: operation,
         payload: payload,
         credential: credential
-      )
+      ),
+      responseTimeout: responseTimeout
     )
   }
 
   private func request(
     endpoint: URL,
-    envelope: RequestEnvelope
+    envelope: RequestEnvelope,
+    responseTimeout: TimeInterval? = nil
   ) throws -> [String: JSONValue] {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -230,7 +237,7 @@ public struct JLRuntimeClient: Sendable {
     let responseData = try transport.send(
       endpoint: endpoint,
       data: encoded,
-      timeout: timeout,
+      timeout: responseTimeout ?? timeout,
       maximumResponseBytes: maximumBytes
     )
     guard responseData.count <= maximumBytes else {

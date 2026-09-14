@@ -3,6 +3,7 @@ import Foundation
 public let protocolVersion = 1
 public let maximumMessageBytes = 64 * 1024
 public let defaultTimeoutSeconds: TimeInterval = 2
+public let executionResponseTimeoutSeconds: TimeInterval = 90
 
 public struct RequestEnvelope: Codable, Equatable, Sendable {
   public let protocolVersion: Int

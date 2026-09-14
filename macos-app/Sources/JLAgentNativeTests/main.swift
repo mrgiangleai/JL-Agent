@@ -20,12 +20,14 @@ private final class StubTransport: IPCTransport, @unchecked Sendable {
   let handler: @Sendable (Data) throws -> Data
   private var callCount = 0
   private let lock = NSLock()
+  private var observedTimeouts: [TimeInterval] = []
 
   init(handler: @escaping @Sendable (Data) throws -> Data) {
     self.handler = handler
   }
 
   var calls: Int { lock.withLock { callCount } }
+  var timeouts: [TimeInterval] { lock.withLock { observedTimeouts } }
 
   func send(
     endpoint: URL,
@@ -33,7 +35,10 @@ private final class StubTransport: IPCTransport, @unchecked Sendable {
     timeout: TimeInterval,
     maximumResponseBytes: Int
   ) throws -> Data {
-    lock.withLock { callCount += 1 }
+    lock.withLock {
+      callCount += 1
+      observedTimeouts.append(timeout)
+    }
     return try handler(data)
   }
 }
@@ -58,10 +63,54 @@ enum NativeContractTests {
     try computerUseRequestBindsScopesTargetAndForeground()
     try serverExecutionErrorRetainsAuthoritativeRuntimeSnapshot()
     try expiredConsentIsRejectedLocally()
+    try executeUsesBoundedLongResponseTimeout()
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     try missingEnrolledConsentKeyRequiresExplicitRotation()
-    print("12 native contract tests passed")
+    print("13 native contract tests passed")
+  }
+
+  private static func executeUsesBoundedLongResponseTimeout() throws {
+    let transport = StubTransport { request in
+      let envelope = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "request envelope is malformed"
+      )
+      let operation = envelope["operation"] as? String
+      return try response(
+        for: request,
+        ok: true,
+        result: [
+          "state": operation == "execute" ? "completed" : "prepared",
+          "output": "safe",
+        ],
+        error: nil
+      )
+    }
+    let client = JLRuntimeClient(
+      paths: paths,
+      credentials: StaticCredential(value: String(repeating: "c", count: 32)),
+      transport: transport,
+      timeout: 2
+    )
+
+    _ = try client.prepare(
+      draft: RequestDraft(),
+      requestID: "request-1",
+      callerID: "native-app",
+      sessionID: "session-1"
+    )
+    _ = try client.execute(
+      draft: RequestDraft(),
+      requestID: "request-1",
+      callerID: "native-app",
+      sessionID: "session-1"
+    )
+
+    try check(
+      transport.timeouts == [2, 90],
+      "execute did not use the bounded long response timeout"
+    )
   }
 
   private static func expiredConsentIsRejectedLocally() throws {
