@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
 from types import ModuleType
 from unittest.mock import patch
 
 from jl_agent.control.voice import (
     HermesTextOnlyTurnRunner,
+    HermesVoiceBackend,
     VoiceCoordinator,
     VoiceError,
 )
@@ -169,6 +172,22 @@ class VoiceCoordinatorTests(unittest.TestCase):
         self.assertEqual(response, "safe reply")
         self.assertEqual(captured["toolsets"], [])
         self.assertFalse(captured["use_config_toolsets"])
+
+    def test_hermes_backend_keeps_model_cache_inside_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            model_root = __import__("pathlib").Path(temporary) / "models"
+            previous = os.environ.pop("HF_HOME", None)
+            try:
+                HermesVoiceBackend(
+                    __import__("pathlib").Path(temporary) / "hermes",
+                    model_cache_root=model_root,
+                )
+                self.assertEqual(os.environ["HF_HOME"], str(model_root / "huggingface"))
+            finally:
+                if previous is None:
+                    os.environ.pop("HF_HOME", None)
+                else:
+                    os.environ["HF_HOME"] = previous
 
 
 if __name__ == "__main__":

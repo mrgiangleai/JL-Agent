@@ -345,9 +345,19 @@ class VoiceCoordinator:
 class HermesVoiceBackend:
     """Lazy adapter over the pinned Hermes process-wide voice/wake singletons."""
 
-    def __init__(self, hermes_root: Path) -> None:
+    def __init__(
+        self,
+        hermes_root: Path,
+        *,
+        model_cache_root: Path | None = None,
+    ) -> None:
         self.hermes_root = hermes_root
         self._wake_owner = object()
+        if model_cache_root is not None:
+            os.environ.setdefault(
+                "HF_HOME",
+                str(model_cache_root / "huggingface"),
+            )
 
     def requirements(self) -> Mapping[str, Any]:
         self._activate_import_path()

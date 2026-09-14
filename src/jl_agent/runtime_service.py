@@ -308,7 +308,10 @@ def build_runtime_service(
     credentials.load_or_create()
     verifier = _load_consent_verifier(paths.consent_public_key)
     voice = VoiceCoordinator(
-        backend=HermesVoiceBackend(root / "upstream" / "hermes-agent"),
+        backend=HermesVoiceBackend(
+            root / "upstream" / "hermes-agent",
+            model_cache_root=root / ".jl-agent" / "models",
+        ),
         turn_runner=HermesTextOnlyTurnRunner(root / "upstream" / "hermes-agent"),
         enabled=voice_enabled_from_environment(),
         activation_approved=voice_activation_approved_from_environment(),

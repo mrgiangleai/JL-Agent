@@ -4,7 +4,8 @@ Last updated: 2026-09-14 ICT
 
 ## Phase 5 current state
 
-- Phase 5 deterministic implementation is complete through the pre-live gate.
+- Phase 5 implementation and local model setup are complete through the
+  pre-microphone gate.
 - The pinned Hermes voice, VAD/STT/TTS, wake-word, ownership, pause/resume,
   bundled-model, and diagnostics surfaces were audited before coding.
 - The minimal JL boundary is fixed: off by default, separately activation-gated,
@@ -15,11 +16,13 @@ Last updated: 2026-09-14 ICT
 - The SwiftUI client exposes strict authenticated status/start/stop/event
   controls and visibly states that voice tool execution is disabled. It does
   not capture audio or request TCC.
-- Deterministic coordinator and IPC contract tests were written first. All 116
+- Deterministic coordinator and IPC contract tests were written first. All 117
   backend and 15 native contract tests pass; release SwiftUI build, Ruff, ty,
   pip check, Swift format, and diff checks pass.
-- No voice dependency/model was installed, no provider/live audio call was
-  made, and Microphone TCC was not requested.
+- The approved minimal pinned dependencies, Faster-Whisper `base`, and only the
+  required openWakeWord auxiliary assets are installed inside the project.
+  Offline model construction passes. No provider/live audio call was made and
+  Microphone TCC was not requested.
 - Detailed evidence: `docs/PHASE5_HERMES_AUDIT.md`.
 
 ## Phase 5 sequential status
@@ -31,8 +34,9 @@ Last updated: 2026-09-14 ICT
 | 3 — Tool-free turn | COMPLETE | Hermes text turn receives explicit `toolsets=[]`; deterministic assertion passes. |
 | 4 — Authenticated IPC | COMPLETE | Six strict protocol-v1 operations; malformed/cross-session requests fail closed. |
 | 5 — Native client | COMPLETE | Strict models/client plus compact Voice + Wake Word controls; no native capture. |
-| 6 — Deterministic validation | COMPLETE | 116 backend tests, 15 native tests, release build, lint/type/dependency/format/diff checks pass. |
-| 7 — Dependency/model/TCC | BLOCKED ON APPROVAL | No install, download, live provider/audio, or Microphone action attempted. |
+| 6 — Deterministic validation | COMPLETE | 117 backend tests, 15 native tests, release build, lint/type/dependency/format/diff checks pass. |
+| 7 — Dependency/model setup | COMPLETE | Exact pinned packages plus one local multilingual STT model and minimum wake assets; offline loads pass. |
+| 8 — Microphone/TCC/live audio | BLOCKED ON APPROVAL | No audio device, provider call, TCC request, or live voice/wake test attempted. |
 
 ## Phase 4C completed state
 

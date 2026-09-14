@@ -62,3 +62,26 @@ until the user separately approves the exact dependency/model action and macOS
 Microphone permission step. Cloud STT/TTS, paid calls, alternate wake models,
 full-duplex streaming, LaunchAgent startup, and voice-driven tool execution are
 out of scope.
+
+## Approved local model setup
+
+The pre-live model step was separately approved and completed without opening
+an audio device:
+
+- Local STT uses Hermes' default multilingual Faster-Whisper `base` model on
+  Apple Silicon CPU/int8. Hugging Face revision
+  `ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66` is cached under the ignored
+  project-local `.jl-agent/models/huggingface/` directory (166 MB).
+- Wake detection uses the existing pinned
+  `tools/wakewords/hey_hermes.tflite` model. Only openWakeWord's required
+  `melspectrogram.tflite`, `embedding_model.tflite`, and `silero_vad.onnx`
+  auxiliary assets were downloaded into the project `.venv`; no other wake
+  phrases or duplicate ONNX feature models were fetched.
+- Offline construction succeeded for Faster-Whisper with
+  `local_files_only=True` and for Hermes' TFLite wake engine with network
+  download replaced by a failing test seam. The engine exposed only the
+  `hey_hermes` label.
+
+Runtime composition sets `HF_HOME` to the project-local model root before any
+Hermes voice imports. Live microphone activation and macOS Microphone TCC remain
+unattempted and require a separate approval.
