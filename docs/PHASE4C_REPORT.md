@@ -1,6 +1,7 @@
 # Phase 4C report
 
-Status: in progress; host provisioning and live GUI validation have not run.
+Status: paused before authorized host installation/TCC; live GUI validation has
+not run.
 
 ## Scope boundary
 
@@ -147,6 +148,11 @@ after the repository-side workflow is reviewed and the user explicitly runs or
 authorizes it. Accessibility and Screen Recording will remain user-granted in
 System Settings; Phase 4C will stop before those grants if they become the next
 required action.
+
+The repository-only preflight did download verified assets into an exact
+temporary directory and removed them after inspection. The sentence above
+refers to persistent host provisioning: no driver package or app remains
+installed.
 
 ## Stable host identity and signing
 

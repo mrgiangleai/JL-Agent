@@ -20,6 +20,22 @@ Last updated: 2026-09-14 ICT
 - The current host is intentionally stopped before Cua installation/TCC. No live
   GUI smoke test has run.
 
+## Phase 4C sequential status
+
+| Step | Status | Evidence |
+|---|---|---|
+| 1 — Host contract re-audit | COMPLETE | Pinned Hermes symbols plus official Cua source, process, manifest, signing, TCC, install, and build contracts recorded. |
+| 2 — Safe provisioning workflow | PREPARED | Exact v0.28.0 installer/helper/archive SHA values and staged official signature passed; persistent host install not authorized. |
+| 3 — Host identity/signing | COMPLETE IN REPO | Official Cua identity enforced; JL signing override supported; host has no Apple signing identity, so JL build remains ad-hoc. |
+| 4 — TCC onboarding | COMPLETE IN REPO | Runtime-owned identity/TCC fields, exact reasons, Settings links, Recheck, and relaunch guidance. |
+| 5 — Runtime lifecycle | COMPLETE IN REPO | Stable foreground entry point/status; existing stale/duplicate/graceful invariants preserved. |
+| 6 — Consent stability | COMPLETE IN REPO | Public fingerprint binding, lost-key refusal, explicit rotation/restart, and regression tests. |
+| 7 — Live readiness gate | COMPLETE IN REPO | Hermes/auth/policy/consent/driver/app/signing/TCC all required; unknown fails closed. |
+| 8 — Live GUI smoke | BLOCKED ON HOST | Driver is absent and TCC unavailable; no GUI action attempted. |
+| 9 — Adversarial tests | COMPLETE IN REPO | Missing/incompatible/unreachable/wrong identity/TCC/lifecycle/enrollment/drift/replay/bypass cases covered deterministically. |
+| 10 — Validation | PARTIAL | 103 backend and 10 native tests, lint/type/dependency/build/sign checks pass; live host checks wait for install/TCC. |
+| 11 — Documentation | PAUSED HANDOFF | Report, host setup, architecture/security/progress, and paused handoff are current; final live result and closeout remain. |
+
 ## Phase 4B current state
 
 - The pinned Hermes `computer_use` source path is audited and reused unchanged.
