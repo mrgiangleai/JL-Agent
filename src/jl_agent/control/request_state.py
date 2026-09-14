@@ -92,6 +92,9 @@ class RequestLifecycle:
 RequestDecoder = Callable[[IPCRequestEnvelope], ControlRequest]
 StatusProvider = Callable[[], Mapping[str, Any]]
 ActivityReader = Callable[[int], tuple[Mapping[str, Any], ...]]
+VoiceHandler = Callable[
+    [str, Mapping[str, Any], str, str], Mapping[str, object]
+]
 
 
 class SecureControlRequestHandler:
@@ -108,6 +111,7 @@ class SecureControlRequestHandler:
         consent_coordinator: ConsentCoordinator | None = None,
         status_provider: StatusProvider | None = None,
         activity_reader: ActivityReader | None = None,
+        voice_handler: VoiceHandler | None = None,
     ) -> None:
         self.credentials = credentials
         self.approvals = approvals
@@ -117,6 +121,7 @@ class SecureControlRequestHandler:
         self.consent_coordinator = consent_coordinator
         self.status_provider = status_provider
         self.activity_reader = activity_reader
+        self.voice_handler = voice_handler
 
     def __call__(self, envelope: IPCRequestEnvelope) -> IPCResponseEnvelope:
         lifecycle = RequestLifecycle(envelope.request_id)
@@ -153,6 +158,37 @@ class SecureControlRequestHandler:
             return IPCResponseEnvelope.success(
                 envelope.request_id, {"events": events}
             )
+        if envelope.operation in {
+            "voice-status",
+            "voice-start",
+            "voice-stop",
+            "voice-events",
+            "wake-start",
+            "wake-stop",
+        }:
+            if self.voice_handler is None:
+                lifecycle.transition(RequestState.FAILED)
+                return self._failure(envelope, lifecycle, "voice_unavailable")
+            try:
+                result = dict(
+                    self.voice_handler(
+                        envelope.operation,
+                        envelope.payload,
+                        envelope.caller_id,
+                        envelope.session_id,
+                    )
+                )
+            except Exception as error:
+                from .voice import VoiceError
+
+                lifecycle.transition(RequestState.FAILED)
+                code = (
+                    error.code
+                    if isinstance(error, VoiceError)
+                    else "voice_unavailable"
+                )
+                return self._failure(envelope, lifecycle, code)
+            return IPCResponseEnvelope.success(envelope.request_id, result)
         if envelope.operation not in {"prepare", "execute"}:
             lifecycle.transition(RequestState.FAILED)
             return self._failure(envelope, lifecycle, "unsupported_operation")

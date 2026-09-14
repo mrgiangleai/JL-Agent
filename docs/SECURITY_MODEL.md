@@ -161,12 +161,14 @@ rechecks foreground identity immediately before input and denies unavailable or
 changed context. Hermes' sticky target, stale element token, hard blocks,
 approval, and effect-verification logic remain defense in depth.
 
-The current host has no cua-driver or CuaDriver.app, so real TCC/input operation
-was not validated. The deterministic proof reaches the pinned Hermes
-`handle_computer_use` handler with Hermes' noop backend; it is not evidence of a
-live screenshot or UI action. Hardware interrupt UI, broad visual-state
-verification, multi-step GUI planning, driver installation, and production
-signed lifecycle remain out of scope.
+The host now has official Cua Driver v0.28.0 installed as
+`/Applications/CuaDriver.app`, signed as `com.trycua.driver` by team
+`YCK386LBJ7`, with Accessibility and Screen Recording granted to that identity.
+Phase 4C validated one read-only AX capture through authenticated JL policy,
+exact native consent, the final execution gate, pinned Hermes, and CuaDriver.
+That accepted proof was not repeated. Hardware interrupt UI, broad visual-state
+verification, multi-step GUI planning, and production distribution lifecycle
+remain out of scope.
 
 Phase 4C additionally binds live readiness to the exact pinned Hermes checkout,
 complete driver manifest, executable-derived CuaDriver app path, exact

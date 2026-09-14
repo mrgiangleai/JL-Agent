@@ -1,8 +1,20 @@
-# Phase 4C progress
+# Phase 5 progress
 
 Last updated: 2026-09-14 ICT
 
-## Phase 4C current state
+## Phase 5 current state
+
+- Phase 5 is approved and implementation has started.
+- The pinned Hermes voice, VAD/STT/TTS, wake-word, ownership, pause/resume,
+  bundled-model, and diagnostics surfaces were audited before coding.
+- The minimal JL boundary is fixed: off by default, separately activation-gated,
+  authenticated caller/session ownership, bounded in-memory events, no raw
+  audio in IPC/audit, and an explicit empty Hermes toolset for every voice turn.
+- Deterministic coordinator and IPC contract tests were written first. No voice
+  dependency/model was installed and Microphone TCC was not requested.
+- Detailed evidence: `docs/PHASE5_HERMES_AUDIT.md`.
+
+## Phase 4C completed state
 
 - Exact pinned Hermes and official Cua source/release contracts were re-audited.
 - A version/checksum/signature-pinned Cua Driver provisioning workflow passes
@@ -27,7 +39,7 @@ Last updated: 2026-09-14 ICT
 - Direct gate-authorized dispatch no longer constructs an LLM `AIAgent`;
   expired consent terminates denied; only execute responses use the bounded
   90-second client deadline.
-- Phase 4C is complete. Phase 5 has not started.
+- Phase 4C is complete.
 
 ## Phase 4C sequential status
 
@@ -187,7 +199,7 @@ Secret, pin/submodule, Git sync, and artifact checks passed. The approximately
 
 ## Next action
 
-Phase 4C is complete. Do not begin Phase 5 or any other phase without a new
-explicit brief. Do not repeat the accepted live smoke. Autonomous/multi-step
-computer use, voice, LaunchAgent, local models, cloud services, accounts,
-telemetry, and distribution remain deferred until explicitly scoped.
+Phase 5 implementation is in progress under the approved minimal boundary. Do
+not repeat the accepted computer-use smoke. Do not install/download voice
+dependencies or models, request Microphone TCC, enable voice-driven tools, or
+run live audio without a separate explicit approval.
