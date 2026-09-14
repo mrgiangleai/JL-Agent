@@ -32,6 +32,11 @@ Last updated: 2026-09-14 ICT
   but TCC attributed the Python accessor `org.python.python` to responsible
   process `com.openai.codex`. The wake stream failed closed before becoming
   ready; no wake event or transcript was produced, and the test was not retried.
+- A subsequent single bounded attempt was explicitly approved for temporary
+  Codex microphone access. The wake stream reached ready, but delivered only
+  near-zero samples; TCC recorded `authValue=0` for responsible process
+  `com.openai.codex`. No wake detection, voice capture, transcription, provider
+  call, or tool execution occurred.
 - Detailed evidence: `docs/PHASE5_HERMES_AUDIT.md`.
 
 ## Phase 5 sequential status
@@ -46,7 +51,7 @@ Last updated: 2026-09-14 ICT
 | 6 — Deterministic validation | COMPLETE | 117 backend tests, 15 native tests, release build, lint/type/dependency/format/diff checks pass. |
 | 7 — Dependency/model setup | COMPLETE | Exact pinned packages plus one local multilingual STT model and minimum wake assets; offline loads pass. |
 | 8 — Stable voice host signing | BLOCKED ON JL APPLE IDENTITY | Repo setup rejects ad-hoc signing; `security find-identity` reports zero valid identities. |
-| 9 — Microphone/TCC/live audio | BLOCKED ON RESPONSIBLE PROCESS | One attempt was attributed to Codex rather than Python and failed before wake readiness; no retry or provider call. |
+| 9 — Microphone/TCC/live audio | BLOCKED ON TCC DENIAL | The approved bounded Codex-hosted attempt opened the stream but received silence; TCC recorded `authValue=0`, with no wake/transcript/provider call. |
 
 ## Phase 4C completed state
 
