@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import plistlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -120,6 +121,41 @@ class NativeClientSurfaceTests(unittest.TestCase):
             text = source.read_text(encoding="utf-8")
             for marker in forbidden:
                 self.assertNotIn(marker, text, f"{source} contains {marker}")
+
+    def test_voice_runtime_has_stable_least_privilege_signing_contract(self) -> None:
+        voice_root = ROOT / "macos-app" / "VoiceRuntime"
+        with (voice_root / "Info.plist").open("rb") as stream:
+            info = plistlib.load(stream)
+        with (voice_root / "JLVoiceRuntime.entitlements").open("rb") as stream:
+            entitlements = plistlib.load(stream)
+
+        self.assertEqual(info["CFBundleIdentifier"], "com.jlagent.voice-runtime")
+        self.assertEqual(info["CFBundleExecutable"], "JLVoiceRuntime")
+        self.assertTrue(info["NSMicrophoneUsageDescription"])
+        self.assertEqual(
+            entitlements,
+            {"com.apple.security.device.audio-input": True},
+        )
+
+        build_script = (
+            ROOT / "macos-app" / "Scripts" / "build-voice-runtime.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("JL_VOICE_CODE_SIGN_IDENTITY", build_script)
+        self.assertIn("Apple Development: ", build_script)
+        self.assertIn("Developer ID Application: ", build_script)
+        self.assertIn("--options runtime", build_script)
+        self.assertIn("--deep --strict", build_script)
+        self.assertIn("com.apple.security.device.audio-input", build_script)
+        self.assertIn("codesign -dr -", build_script)
+        self.assertNotIn("signing_identity:--", build_script)
+
+        host_source = (
+            ROOT / "macos-app" / "Sources" / "JLVoiceRuntime" / "main.swift"
+        ).read_text(encoding="utf-8")
+        for live_audio_marker in (
+            "AVAudioEngine", "AVCaptureDevice", "AudioQueue", "sounddevice"
+        ):
+            self.assertNotIn(live_audio_marker, host_source)
 
 
 if __name__ == "__main__":

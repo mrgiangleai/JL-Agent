@@ -8,6 +8,7 @@ let package = Package(
   products: [
     .library(name: "JLAgentCore", targets: ["JLAgentCore"]),
     .executable(name: "JLAgentApp", targets: ["JLAgentApp"]),
+    .executable(name: "JLVoiceRuntime", targets: ["JLVoiceRuntime"]),
     .executable(name: "JLAgentNativeTests", targets: ["JLAgentNativeTests"]),
   ],
   targets: [
@@ -19,6 +20,7 @@ let package = Package(
       name: "JLAgentApp",
       dependencies: ["JLAgentCore"]
     ),
+    .executableTarget(name: "JLVoiceRuntime"),
     .executableTarget(
       name: "JLAgentNativeTests",
       dependencies: ["JLAgentCore"]

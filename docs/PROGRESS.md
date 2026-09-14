@@ -23,6 +23,11 @@ Last updated: 2026-09-14 ICT
   required openWakeWord auxiliary assets are installed inside the project.
   Offline model construction passes. No provider/live audio call was made and
   Microphone TCC was not requested.
+- The pre-microphone audit rejected the generic Python runtime as a TCC target.
+  A separate inert `com.jlagent.voice-runtime` host and fail-closed signing
+  workflow are prepared with Hardened Runtime, an audio-input entitlement, and
+  an explicit usage description. The machine currently has no valid Apple code
+  signing identity, so a stable signed app has not yet been produced.
 - Detailed evidence: `docs/PHASE5_HERMES_AUDIT.md`.
 
 ## Phase 5 sequential status
@@ -36,7 +41,8 @@ Last updated: 2026-09-14 ICT
 | 5 — Native client | COMPLETE | Strict models/client plus compact Voice + Wake Word controls; no native capture. |
 | 6 — Deterministic validation | COMPLETE | 117 backend tests, 15 native tests, release build, lint/type/dependency/format/diff checks pass. |
 | 7 — Dependency/model setup | COMPLETE | Exact pinned packages plus one local multilingual STT model and minimum wake assets; offline loads pass. |
-| 8 — Microphone/TCC/live audio | BLOCKED ON APPROVAL | No audio device, provider call, TCC request, or live voice/wake test attempted. |
+| 8 — Stable voice host signing | BLOCKED ON JL APPLE IDENTITY | Repo setup rejects ad-hoc signing; `security find-identity` reports zero valid identities. |
+| 9 — Microphone/TCC/live audio | NOT STARTED | No audio device, provider call, TCC request, or live voice/wake test attempted. |
 
 ## Phase 4C completed state
 
