@@ -62,6 +62,7 @@ public struct RuntimeStatus: Equatable, Sendable {
   public let transport: String
   public let hermesRevision: String
   public let consentAvailable: Bool
+  public let computerUse: ComputerUseStatus
 
   init(result: [String: JSONValue]) throws {
     guard
@@ -69,7 +70,8 @@ public struct RuntimeStatus: Equatable, Sendable {
       let state = result["state"]?.stringValue,
       let transport = result["transport"]?.stringValue,
       let revision = result["hermes_revision"]?.stringValue,
-      let consent = result["consent_available"]?.boolValue
+      let consent = result["consent_available"]?.boolValue,
+      let computerUse = result["computer_use"]?.objectValue
     else {
       throw RuntimeClientError.malformedResponse
     }
@@ -78,6 +80,80 @@ public struct RuntimeStatus: Equatable, Sendable {
     self.transport = transport
     self.hermesRevision = revision
     self.consentAvailable = consent
+    self.computerUse = try ComputerUseStatus(value: computerUse)
+  }
+}
+
+public struct MacOSPermissionStatus: Identifiable, Equatable, Sendable {
+  public var id: String { kind }
+  public let kind: String
+  public let state: String
+  public let explanation: String
+  public let settingsURL: URL
+
+  init(value: JSONValue) throws {
+    guard
+      let item = value.objectValue,
+      Set(item.keys) == ["kind", "state", "explanation", "settings_url"],
+      let kind = item["kind"]?.stringValue,
+      let state = item["state"]?.stringValue,
+      Self.allowedStates.contains(state),
+      let explanation = item["explanation"]?.stringValue,
+      let urlText = item["settings_url"]?.stringValue,
+      let settingsURL = URL(string: urlText),
+      settingsURL.scheme == "x-apple.systempreferences"
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.kind = kind
+    self.state = state
+    self.explanation = explanation
+    self.settingsURL = settingsURL
+  }
+
+  private static let allowedStates: Set<String> = [
+    "granted", "denied", "notDetermined", "unknown", "unavailable",
+    "restartRequired",
+  ]
+}
+
+public struct ComputerUseStatus: Equatable, Sendable {
+  public let enabled: Bool
+  public let health: String
+  public let ready: Bool
+  public let platformSupported: Bool
+  public let driverAvailable: Bool
+  public let driverContractReady: Bool
+  public let driverVersion: String?
+  public let detail: String
+  public let permissions: [MacOSPermissionStatus]
+
+  init(value: [String: JSONValue]) throws {
+    guard
+      Set(value.keys) == [
+        "enabled", "health", "ready", "platform_supported", "driver_available",
+        "driver_contract_ready", "driver_version", "detail", "permissions",
+      ],
+      let enabled = value["enabled"]?.boolValue,
+      let health = value["health"]?.stringValue,
+      let ready = value["ready"]?.boolValue,
+      let platform = value["platform_supported"]?.boolValue,
+      let driver = value["driver_available"]?.boolValue,
+      let contract = value["driver_contract_ready"]?.boolValue,
+      let detail = value["detail"]?.stringValue,
+      let permissions = value["permissions"]?.arrayValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.enabled = enabled
+    self.health = health
+    self.ready = ready
+    self.platformSupported = platform
+    self.driverAvailable = driver
+    self.driverContractReady = contract
+    self.driverVersion = value["driver_version"]?.stringValue
+    self.detail = detail
+    self.permissions = try permissions.map(MacOSPermissionStatus.init(value:))
   }
 }
 

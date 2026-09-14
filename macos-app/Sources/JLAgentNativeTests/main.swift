@@ -54,9 +54,10 @@ enum NativeContractTests {
     try malformedAndUnsupportedResponsesFailSafely()
     try consentPayloadCannotCarryWildcardApproval()
     try activityRejectsSensitiveFields()
+    try computerUsePermissionStatusIsStructured()
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
-    print("7 native contract tests passed")
+    print("8 native contract tests passed")
   }
 
   private static func runIntegrationCommand(_ arguments: [String]) throws {
@@ -257,6 +258,51 @@ enum NativeContractTests {
         callerID: "native-app", sessionID: "session-1"
       )
     }
+  }
+
+  private static func computerUsePermissionStatusIsStructured() throws {
+    let transport = StubTransport { request in
+      try response(
+        for: request,
+        ok: true,
+        result: [
+          "ready": true,
+          "state": "ready",
+          "transport": "AF_UNIX",
+          "hermes_revision": String(repeating: "a", count: 40),
+          "consent_available": true,
+          "computer_use": [
+            "enabled": true,
+            "health": "unavailable",
+            "ready": false,
+            "platform_supported": true,
+            "driver_available": true,
+            "driver_contract_ready": true,
+            "driver_version": "0.20.1",
+            "detail": "required permission is unknown",
+            "permissions": [
+              [
+                "kind": "accessibility",
+                "state": "unknown",
+                "explanation": "Required for input.",
+                "settings_url":
+                  "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+              ]
+            ],
+          ],
+        ],
+        error: nil
+      )
+    }
+
+    let status = try makeClient(transport: transport).status(
+      callerID: "native-app", sessionID: "session-1"
+    )
+    try check(!status.computerUse.ready, "missing TCC was shown as ready")
+    try check(
+      status.computerUse.permissions.first?.state == "unknown",
+      "permission state was not preserved"
+    )
   }
 
   private static func keychainCredentialImportsAndRefreshes() throws {

@@ -21,6 +21,13 @@ from .control_plane import (
     HermesInvocationProjection,
     JLControlPlane,
 )
+from .computer_use import (
+    ComputerUseReadiness,
+    HermesComputerUseReadinessProbe,
+    MacOSPermissionKind,
+    MacOSPermissionState,
+    MacOSPermissionStatus,
+)
 from .execution import (
     AuthenticatedExecutionContext,
     ExecutionGate,
@@ -105,6 +112,7 @@ __all__ = [
     "CapabilityDescriptor",
     "CapabilityRegistry",
     "CapabilityType",
+    "ComputerUseReadiness",
     "ConfigurationRequirements",
     "ControlPathResult",
     "ControlPlaneError",
@@ -131,6 +139,7 @@ __all__ = [
     "HermesExecutionAdapter",
     "HermesExecutionStatus",
     "HermesInvocationProjection",
+    "HermesComputerUseReadinessProbe",
     "HermesProjection",
     "HermesProjectionError",
     "HermesProjectionResult",
@@ -146,6 +155,9 @@ __all__ = [
     "JLControlPlane",
     "FileCredentialProvider",
     "ModelCandidate",
+    "MacOSPermissionKind",
+    "MacOSPermissionState",
+    "MacOSPermissionStatus",
     "OneTimeApprovalStore",
     "PROTOCOL_VERSION",
     "ProbeOutcome",

@@ -9,6 +9,7 @@ from jl_agent.control.permissions import (
     ActionProposal,
     DecisionOutcome,
 )
+from jl_agent.control.health import ProbeOutcome
 from jl_agent.control.registry import HealthState
 from jl_agent.control.router import (
     CostClass,
@@ -98,6 +99,25 @@ class JLControlPlaneTests(unittest.TestCase):
         )
         self.assertIsNone(result.route)
         self.assertIsNone(result.invocation)
+
+    def test_computer_use_rejects_untrusted_client_health(self) -> None:
+        request = ControlRequest(
+            capability_id="core.hermes.computer-use",
+            action=ActionProposal(
+                action="computer_use",
+                normalized_arguments={"action": "capture", "mode": "ax"},
+                requested_permissions=("screen.capture",),
+            ),
+            route=RouteRequest(
+                category=TaskCategory.SIMPLE,
+                required_abilities=frozenset({"text", "tool-calling"}),
+            ),
+            candidates=(self.candidate,),
+            probe=ProbeOutcome(HealthState.HEALTHY, "client claims ready"),
+        )
+
+        with self.assertRaisesRegex(Exception, "health does not allow routing"):
+            self.control_plane.prepare(request)
 
 
 if __name__ == "__main__":

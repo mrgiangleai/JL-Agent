@@ -32,6 +32,10 @@ class HermesProjectionTests(unittest.TestCase):
             self.assertEqual(capability.source.revision, HERMES_REVISION)
             self.assertEqual(capability.health.state, HealthState.UNKNOWN)
             self.assertEqual(capability.dependencies, ("core.hermes.agent",))
+        computer_use = result.registry.get("core.hermes.computer-use")
+        self.assertEqual(computer_use.entrypoint.address, "computer_use")
+        self.assertIn("screen.capture", computer_use.permissions)
+        self.assertIn("input.control", computer_use.permissions)
 
     def test_identity_mismatch_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

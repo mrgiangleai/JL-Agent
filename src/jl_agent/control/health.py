@@ -21,6 +21,8 @@ class ProbeOutcome:
             HealthState.DEGRADED,
             HealthState.UNAVAILABLE,
             HealthState.BLOCKED,
+            HealthState.MISCONFIGURED,
+            HealthState.DISABLED,
         }
         if self.state not in allowed:
             raise ValueError(f"probe outcome cannot be {self.state}")
@@ -153,6 +155,12 @@ class HealthMonitor:
             if dependency_states[dependency]
             in {HealthState.DEGRADED, HealthState.UNKNOWN, HealthState.STARTING}
         )
+        if probe and probe.state is HealthState.DISABLED:
+            return HealthState.DISABLED, (probe.detail or "probe is disabled",)
+        if probe and probe.state is HealthState.MISCONFIGURED:
+            return HealthState.MISCONFIGURED, (
+                probe.detail or "probe is misconfigured",
+            )
         if probe and probe.state in {HealthState.UNAVAILABLE, HealthState.BLOCKED}:
             return HealthState.UNAVAILABLE, (probe.detail or "probe is unavailable",)
         if soft_dependencies or (probe and probe.state is HealthState.DEGRADED):

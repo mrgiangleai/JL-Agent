@@ -64,6 +64,26 @@ class HealthMonitorTests(unittest.TestCase):
         self.assertEqual(result.capability.health.state, HealthState.DEGRADED)
         self.assertEqual(result.reasons, ("cache is stale",))
 
+    def test_probe_can_report_disabled_or_misconfigured(self) -> None:
+        dependencies = {"python>=3.11,<3.14": HealthState.HEALTHY}
+        disabled = self.monitor.assess(
+            self.capability,
+            available=True,
+            dependency_states=dependencies,
+            probe=ProbeOutcome(HealthState.DISABLED, "operator disabled it"),
+        )
+        misconfigured = self.monitor.assess(
+            self.capability,
+            available=True,
+            dependency_states=dependencies,
+            probe=ProbeOutcome(HealthState.MISCONFIGURED, "bad manifest"),
+        )
+
+        self.assertEqual(disabled.capability.health.state, HealthState.DISABLED)
+        self.assertEqual(
+            misconfigured.capability.health.state, HealthState.MISCONFIGURED
+        )
+
     def test_all_checks_pass_as_healthy(self) -> None:
         result = self.monitor.assess(
             self.capability,

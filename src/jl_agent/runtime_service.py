@@ -15,6 +15,7 @@ from .control.approvals import OneTimeApprovalStore
 from .control.audit import AuditLedger
 from .control.auth import FileCredentialProvider
 from .control.codec import decode_control_request
+from .control.computer_use import HermesComputerUseReadinessProbe
 from .control.consent import (
     ConsentCoordinator,
     ConsentSignatureVerifier,
@@ -189,10 +190,18 @@ def build_runtime_service(
     paths = RuntimePaths.user_local(runtime_root)
     approvals = OneTimeApprovalStore()
     consent = ConsentCoordinator()
+    computer_use_probe = HermesComputerUseReadinessProbe(
+        root / "upstream" / "hermes-agent"
+    )
     control_plane = JLControlPlane(
         projection=HermesProjection(root / "upstream" / "hermes-agent"),
         router=DeterministicModelRouter(
             RouterPolicy.from_file(root / "config" / "model-router.example.yaml")
+        ),
+        trusted_probe_provider=lambda capability_id: (
+            computer_use_probe.inspect().health_probe()
+            if capability_id == "core.hermes.computer-use"
+            else None
         ),
     )
     audit = AuditLedger(paths.audit)
@@ -210,6 +219,7 @@ def build_runtime_service(
     verifier = _load_consent_verifier(paths.consent_public_key)
 
     def runtime_status() -> dict[str, object]:
+        computer_use = computer_use_probe.inspect()
         return {
             "ready": True,
             "state": "ready" if verifier.available else "degraded",
@@ -217,6 +227,7 @@ def build_runtime_service(
             "transport": "AF_UNIX",
             "hermes_revision": HERMES_REVISION,
             "consent_available": verifier.available,
+            "computer_use": computer_use.as_dict(),
         }
 
     handler = SecureControlRequestHandler(

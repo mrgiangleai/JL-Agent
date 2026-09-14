@@ -111,6 +111,27 @@ CAPABILITY_SPECS = (
         permissions=("network.read", "external.send", "credential.use"),
         configuration_optional=("mcp_servers",),
     ),
+    HermesCapabilitySpec(
+        id="core.hermes.computer-use",
+        name="Hermes macOS Computer Use",
+        capability_type=CapabilityType.TOOL,
+        entrypoint_kind=EntrypointKind.HERMES_TOOL,
+        entrypoint_address="computer_use",
+        module_path="tools/computer_use_tool.py",
+        evidence='name="computer_use"',
+        permissions=(
+            "screen.capture",
+            "input.control",
+            "local.delete",
+            "external.send",
+            "credential.use",
+            "finance.transact",
+        ),
+        configuration_optional=(
+            "computer_use.permission_mode",
+            "computer_use.capability_manifest",
+        ),
+    ),
 )
 
 

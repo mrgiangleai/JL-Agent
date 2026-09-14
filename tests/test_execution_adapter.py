@@ -69,6 +69,24 @@ class HermesExecutionAdapterTests(unittest.TestCase):
             {"path": "docs/ARCHITECTURE.md"},
         )
 
+    def test_computer_use_maps_to_the_single_hermes_tool(self) -> None:
+        runtime = FakeRuntime(
+            HermesRuntimeResult(HermesExecutionStatus.COMPLETED, "captured")
+        )
+        adapter = HermesExecutionAdapter(runtime)
+        projected = projection(
+            capability_id="core.hermes.computer-use",
+            entrypoint_address="computer_use",
+            action="computer_use",
+            arguments_json='{"action":"capture","mode":"ax"}',
+        )
+
+        result = adapter._execute(adapter._issue_command(projected, "request-cu"))
+
+        self.assertEqual(result.status, HermesExecutionStatus.COMPLETED)
+        self.assertEqual(runtime.requests[0].enabled_toolsets, ("computer_use",))
+        self.assertEqual(runtime.requests[0].allowed_tool, "computer_use")
+
     def test_forged_or_out_of_toolset_command_fails_closed(self) -> None:
         runtime = FakeRuntime(HermesRuntimeResult(HermesExecutionStatus.COMPLETED))
         adapter = HermesExecutionAdapter(runtime)

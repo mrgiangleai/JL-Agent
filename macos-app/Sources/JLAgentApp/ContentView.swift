@@ -72,6 +72,46 @@ struct ContentView: View {
         }
       }
 
+      GroupBox("macOS Permissions") {
+        if let status = viewModel.computerUseStatus {
+          VStack(alignment: .leading, spacing: 8) {
+            HStack {
+              Text("Computer Use")
+                .font(.headline)
+              Spacer()
+              Text(status.health)
+                .foregroundStyle(status.ready ? .green : .orange)
+            }
+            Text(driverSummary(status))
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            ForEach(status.permissions) { permission in
+              HStack(alignment: .top, spacing: 10) {
+                Text(permissionLabel(permission.kind))
+                  .frame(width: 130, alignment: .leading)
+                Text(permission.state)
+                  .frame(width: 110, alignment: .leading)
+                Text(permission.explanation)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                Link("Open Settings", destination: permission.settingsURL)
+              }
+            }
+            Text(
+              "Permissions belong to CuaDriver (com.trycua.driver). JL never changes TCC or "
+                + "prompts repeatedly. After granting, relaunch CuaDriver/runtime if status "
+                + "says restartRequired."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          }
+        } else {
+          Text("Refresh runtime status to inspect CuaDriver permissions.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+
       GroupBox("Recent safe activity") {
         List(viewModel.activity) { item in
           HStack {
@@ -102,6 +142,19 @@ struct ContentView: View {
     case .degraded: .orange
     case .authenticationFailed, .unavailable: .red
     }
+  }
+
+  private func permissionLabel(_ kind: String) -> String {
+    kind == "screenRecording" ? "Screen Recording" : "Accessibility"
+  }
+
+  private func driverSummary(_ status: ComputerUseStatus) -> String {
+    if !status.driverAvailable {
+      return "cua-driver is not installed. Use the reviewed Hermes installer before "
+        + "granting permissions."
+    }
+    let version = status.driverVersion.map { " \($0)" } ?? ""
+    return "cua-driver\(version): \(status.detail)"
   }
 }
 

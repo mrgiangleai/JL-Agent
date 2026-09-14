@@ -18,6 +18,7 @@ final class AgentViewModel: ObservableObject {
   @Published var resultText = "No request sent."
   @Published var pendingConsent: ConsentChallenge?
   @Published var activity: [ActivityEvent] = []
+  @Published var computerUseStatus: ComputerUseStatus?
   @Published var isWorking = false
 
   let callerID = "native-macos-app"
@@ -244,6 +245,7 @@ final class AgentViewModel: ObservableObject {
   }
 
   private func apply(_ status: RuntimeStatus) {
+    computerUseStatus = status.computerUse
     if !status.ready {
       connectionState = .unavailable
     } else if status.state == "degraded" || !status.consentAvailable {

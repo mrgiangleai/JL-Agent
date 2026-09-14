@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from .approvals import ApprovalRecord, ApprovalState
@@ -79,11 +79,13 @@ class JLControlPlane:
         router: DeterministicModelRouter,
         health_monitor: HealthMonitor | None = None,
         permission_engine: PermissionRiskEngine | None = None,
+        trusted_probe_provider: Callable[[str], ProbeOutcome | None] | None = None,
     ) -> None:
         self.projection = projection
         self.router = router
         self.health_monitor = health_monitor or HealthMonitor()
         self.permission_engine = permission_engine or PermissionRiskEngine()
+        self.trusted_probe_provider = trusted_probe_provider
 
     def prepare(self, request: ControlRequest) -> ControlPathResult:
         checked = self.check_policy(request)
@@ -98,12 +100,22 @@ class JLControlPlane:
             "core.hermes.agent": HealthState.HEALTHY,
             **dict(request.dependency_states or {}),
         }
+        probe = request.probe
+        if request.capability_id == "core.hermes.computer-use":
+            probe = (
+                self.trusted_probe_provider(request.capability_id)
+                if self.trusted_probe_provider is not None
+                else ProbeOutcome(
+                    HealthState.UNAVAILABLE,
+                    "trusted computer-use readiness probe is unavailable",
+                )
+            )
         healthy_registry, all_health_reasons = self.health_monitor.assess_registry(
             projected.registry,
             availability=projected.availability,
             configured_keys={request.capability_id: request.configured_keys},
             dependency_states=dependency_states,
-            probes={request.capability_id: request.probe} if request.probe else None,
+            probes={request.capability_id: probe} if probe else None,
         )
         try:
             capability = healthy_registry.get(request.capability_id)

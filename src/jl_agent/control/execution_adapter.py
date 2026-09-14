@@ -88,6 +88,7 @@ class HermesExecutionAdapter:
             }
         ),
         "memory": frozenset({"memory"}),
+        "computer_use": frozenset({"computer_use"}),
     }
 
     def __init__(self, runtime: HermesRuntime) -> None:
