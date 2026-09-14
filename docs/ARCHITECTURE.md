@@ -99,8 +99,9 @@ fallback. See `MODEL_ROUTER.md`.
 
 ### macOS Native App
 
-The Phase 4A SwiftUI application is a native control/consent client. It owns a
-compact status, request/result, consent, and safe-activity surface. It speaks
+The Phase 4B SwiftUI application is a native control/consent client. It owns a
+compact status, request/result, consent, safe-activity, and macOS permission
+surface. It speaks
 protocol v1 over bounded user-local Unix sockets, stores its bearer credential
 and consent private key in Keychain, and contains no Hermes imports, tool
 implementations, provider logic, or execution authority.
@@ -113,8 +114,11 @@ one-time approval internally, and registers the prepared request with the
 existing gate. Approval tokens and client-computed fingerprints never cross a
 socket. See `PHASE4A_TRUST_BOUNDARY.md`.
 
-The foreground runtime remains operator-started. Phase 4A does not install a
-LaunchAgent, manage final distribution signing, or add voice/computer control.
+Phase 4B shows Accessibility and Screen Recording readiness reported for
+CuaDriver, with explicit System Settings guidance. It never prompts repeatedly,
+changes TCC, or performs screenshot/input automation. The foreground runtime
+remains operator-started; no LaunchAgent, final distribution signing, or voice
+surface exists.
 
 ### Execution Gate and Audit Ledger
 
@@ -150,6 +154,15 @@ In Phase 4A, a confirmation path pauses after step 5. The runtime returns only
 safe consent presentation data and an opaque signed challenge. A trusted native
 decision resumes the stored exact request through the same preparation and
 execution gate; the app cannot replace that request while approving it.
+
+In Phase 4B, `core.hermes.computer-use` projects the pinned Hermes
+`computer_use` toolset/tool. A side-effect-free JL adapter reads only the
+cua-driver manifest and permission status for health. The risk engine derives a
+mandatory base scope from the inner computer-use action, and protected reads or
+input actions use the existing exact consent path. Before mutating dispatch, the
+gate revalidates the approved app/target/fresh foreground identity, then the
+Phase 3B adapter invokes Hermes. Hermes retains sticky PID/window and snapshot
+token validation, input dispatch, screenshots, and its own guardrails.
 
 ## External component rule
 

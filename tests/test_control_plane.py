@@ -4,12 +4,12 @@ import unittest
 from pathlib import Path
 
 from jl_agent.control.control_plane import ControlRequest, JLControlPlane
+from jl_agent.control.health import ProbeOutcome
 from jl_agent.control.hermes_projection import HERMES_REVISION, HermesProjection
 from jl_agent.control.permissions import (
     ActionProposal,
     DecisionOutcome,
 )
-from jl_agent.control.health import ProbeOutcome
 from jl_agent.control.registry import HealthState
 from jl_agent.control.router import (
     CostClass,

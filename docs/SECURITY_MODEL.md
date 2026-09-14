@@ -118,7 +118,7 @@ export a sanitized audit summary. Raw secrets are never included in exports.
 
 ## Current implementation limitations
 
-Phase 4A adds a native Keychain-backed client credential, a Keychain RSA consent
+Phase 4B retains the native Keychain-backed client credential, Keychain RSA consent
 key, and a separate signature-authenticated consent socket. Normal IPC still
 cannot issue or activate approvals. The runtime creates an opaque, bounded,
 short-lived pending record after policy evaluation; only a signed approve or
@@ -143,3 +143,27 @@ local Hermes/provider configuration. Hermes guardrails remain defense in depth,
 not OS containment. Continue to use an explicitly trusted workspace and do not
 enable unattended destructive, communication, credential, or financial
 actions.
+
+The pinned Hermes computer-use capability is now projected through JL rather
+than reimplemented. On macOS, readiness requires its audited cua-driver 0.20+
+contract plus Accessibility and Screen Recording for the CuaDriver identity;
+Input Monitoring is not requested by this pin. Unknown, denied, unavailable, or
+restart-pending required TCC state is not executable. Client-supplied health
+cannot replace the runtime-owned probe.
+
+The permission engine validates the exact inner computer-use action and its
+minimum scope. Screen capture and all input enter protected scope; mutating
+input cannot run unattended. Existing external communication, credential,
+destructive, and financial classes remain stronger when combined with UI
+control. Exact app target, resolved target, foreground identity, arguments,
+caller/session, capability identity, and scopes are approval-bound. The gate
+rechecks foreground identity immediately before input and denies unavailable or
+changed context. Hermes' sticky target, stale element token, hard blocks,
+approval, and effect-verification logic remain defense in depth.
+
+The current host has no cua-driver or CuaDriver.app, so real TCC/input operation
+was not validated. The deterministic proof reaches the pinned Hermes
+`handle_computer_use` handler with Hermes' noop backend; it is not evidence of a
+live screenshot or UI action. Hardware interrupt UI, broad visual-state
+verification, multi-step GUI planning, driver installation, and production
+signed lifecycle remain out of scope.

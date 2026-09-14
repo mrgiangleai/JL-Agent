@@ -4,6 +4,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
+from jl_agent.control.hermes_projection import HermesProjection
 from jl_agent.control.permissions import (
     ActionClass,
     ActionProposal,
@@ -11,7 +12,6 @@ from jl_agent.control.permissions import (
     PermissionRiskEngine,
 )
 from jl_agent.control.registry import CapabilityRegistry
-from jl_agent.control.hermes_projection import HermesProjection
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "config" / "capabilities.example.yaml"
@@ -140,9 +140,7 @@ class PermissionRiskEngineTests(unittest.TestCase):
         )
 
     def test_computer_use_requires_authoritative_base_scope(self) -> None:
-        capability = HermesProjection(ROOT / "upstream" / "hermes-agent").project().registry.get(
-            "core.hermes.computer-use"
-        )
+        capability = self.computer_use_capability()
         missing = self.engine.evaluate(
             capability,
             self.proposal(
@@ -165,10 +163,8 @@ class PermissionRiskEngineTests(unittest.TestCase):
             protected_read.outcome, DecisionOutcome.REQUIRES_CONFIRMATION
         )
 
-    def test_computer_input_requires_exact_target_context_and_confirmation(self) -> None:
-        capability = HermesProjection(ROOT / "upstream" / "hermes-agent").project().registry.get(
-            "core.hermes.computer-use"
-        )
+    def test_computer_input_requires_target_context_and_confirmation(self) -> None:
+        capability = self.computer_use_capability()
         exact = self.engine.evaluate(
             capability,
             self.proposal(
@@ -217,9 +213,7 @@ class PermissionRiskEngineTests(unittest.TestCase):
         self.assertEqual(no_consent.outcome, DecisionOutcome.MUST_BE_DENIED)
 
     def test_computer_use_preserves_stricter_effect_classes(self) -> None:
-        capability = HermesProjection(ROOT / "upstream" / "hermes-agent").project().registry.get(
-            "core.hermes.computer-use"
-        )
+        capability = self.computer_use_capability()
         scopes = (
             "input.control",
             "external.send",
@@ -246,6 +240,14 @@ class PermissionRiskEngineTests(unittest.TestCase):
                 ActionClass.FINANCIAL_HIGH_RISK,
                 ActionClass.DESTRUCTIVE,
             }.issubset(decision.action_classes)
+        )
+
+    @staticmethod
+    def computer_use_capability():
+        return (
+            HermesProjection(ROOT / "upstream" / "hermes-agent")
+            .project()
+            .registry.get("core.hermes.computer-use")
         )
 
 

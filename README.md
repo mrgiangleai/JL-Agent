@@ -3,16 +3,17 @@
 JL Agent is a personal macOS AI assistant built around an upstream-first
 integration strategy. Phase 1 selects [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 as the agent core and pins it as a Git submodule. JL Agent-specific policy,
-adapters, routing, health checks, and the future native macOS shell remain
+adapters, routing, health checks, and the native macOS shell remain
 outside the upstream checkout.
 
-## Phase 4A control and consent client
+## Phase 4B macOS permission and computer-use boundary
 
 The Python runtime under `src/jl_agent/` owns authenticated local IPC, policy,
 health, exact approval, preparation, execution gating, and the thin Hermes
 adapter. The native SwiftUI client under `macos-app/` owns local status,
-Keychain-backed client credentials, exact consent UI, request/result display,
-and safe activity. Hermes remains the sole agent runtime core.
+Keychain-backed client credentials, exact consent UI, permission readiness,
+request/result display, and safe activity. Hermes remains the sole agent runtime
+and computer-use core.
 
 Use Python 3.11-3.13:
 
@@ -24,8 +25,8 @@ python3 -m venv .venv
 .venv/bin/ty check
 ```
 
-See [the Phase 4A handoff](docs/PHASE4A_HANDOFF.md) for the current source state,
-validation commands, safety invariants, and deferred Phase 4B boundary.
+See [the Phase 4B handoff](docs/PHASE4B_HANDOFF.md) for the current source state,
+validation commands, safety invariants, and deferred boundary.
 
 ## Hermes baseline
 

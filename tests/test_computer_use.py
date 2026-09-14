@@ -76,7 +76,7 @@ class ComputerUseReadinessTests(unittest.TestCase):
         )
         self.assertEqual(readiness.health_probe().state, HealthState.UNAVAILABLE)
 
-    def test_explicit_denied_not_determined_and_restart_states_are_preserved(self) -> None:
+    def test_explicit_denied_and_restart_states_are_preserved(self) -> None:
         denied = self.probe(
             {
                 "accessibility_state": "denied",

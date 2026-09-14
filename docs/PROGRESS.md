@@ -1,8 +1,23 @@
-# Phase 4A progress
+# Phase 4B progress
 
 Last updated: 2026-09-14 ICT
 
-## Phase 4A current state
+## Phase 4B current state
+
+- The pinned Hermes `computer_use` source path is audited and reused unchanged.
+- JL represents Accessibility and Screen Recording state explicitly and derives
+  fail-closed capability health from a bounded driver/status probe.
+- The SwiftUI app shows compact permission status, rationale, and safe System
+  Settings links without prompting or changing TCC.
+- `core.hermes.computer-use` is projected through the existing registry, policy,
+  consent, execution gate, and Hermes adapter.
+- Inner actions have authoritative minimum scopes; mutating input is exact,
+  confirmation-bound, attended, and protected by fresh foreground context.
+- A cross-process native-to-pinned-Hermes `capture(mode="ax")` proof passes with
+  Hermes' deterministic noop backend. Real macOS driver/TCC validation is
+  deferred because this host lacks the component.
+
+## Phase 4A baseline
 
 - A dependency-free SwiftUI app provides status, session, exact request,
   result/error, trusted consent, credential maintenance, and safe activity.
@@ -67,6 +82,21 @@ Last updated: 2026-09-14 ICT
 | 7 — Validation | COMPLETE | 84 backend tests, 7 native tests, release app build/sign, and explicitly authorized cross-process consent smoke pass. |
 | 8 — Documentation/closeout | COMPLETE | Report, trust boundary, architecture/security updates, handoff, secret/pin/submodule checks, and Git closeout completed. |
 
+## Phase 4B sequential status
+
+| Step | Status | Evidence |
+|---|---|---|
+| 1 — Pinned Hermes audit | COMPLETE | Exact registry/schema/backend/capture/input/guardrail/TCC/CuaDriver symbols documented without upstream changes. |
+| 2 — Permission model | COMPLETE | Accessibility and Screen Recording states plus denied/notDetermined/unknown/unavailable/restart handling; no unproven Input Monitoring. |
+| 3 — Native permission UI | COMPLETE | Compact status, rationale, CuaDriver identity guidance, and explicit System Settings links. |
+| 4 — Capability integration | COMPLETE | `core.hermes.computer-use`, trusted runtime probe, driver/TCC/config/enabled health, and exact Hermes toolset projection. |
+| 5 — Risk policy | COMPLETE | Authoritative action-to-scope mapping, protected read/input confirmation, stronger effect classes, attended mutation. |
+| 6 — Target integrity | COMPLETE | Approval-bound app/target/foreground and final fail-closed `lsappinfo` recheck before input. |
+| 7 — Safe proof | COMPLETE | Swift/auth/IPC/policy/signed consent/gate/adapter/pinned Hermes handler/AX noop capture passed. |
+| 8 — Adversarial tests | COMPLETE | Missing TCC/driver, disabled/misconfigured, drift/replay/no-consent/forged authority/upstream denial/native exclusion covered. |
+| 9 — Validation | COMPLETE | 99 backend tests, Ruff, ty, pip, 9 native tests, format, release app build/sign, proof, pin/submodule checks passed. |
+| 10 — Documentation/closeout | COMPLETE | Report, audit, architecture/security/progress, fresh handoff, commit/push, and final Git checks. |
+
 ## Phase 3A sequential status
 
 | Step | Status | Evidence |
@@ -90,7 +120,7 @@ Last updated: 2026-09-14 ICT
 | 7 — Validation | COMPLETE | 30 JL tests, Ruff, `ty`, dependency check, source pin, secret scan, and diff checks pass. Commit `1064dd6`. |
 | 8 — Documentation and handoff | COMPLETE | Phase 2 report/handoff and contract status updates prepared for a fresh Phase 3 context. |
 
-## Phase 4A validation summary
+## Phase 4B validation summary
 
 The final lightweight validation uses a temporary development environment and
 runs sequentially:
@@ -105,16 +135,17 @@ git -C upstream/hermes-agent status --short
 git diff --check
 ```
 
-Result: 84 backend tests and 7 native tests passed; Ruff, `ty`, dependency and
-Swift format checks, SwiftUI debug/release compile, development app sign
-verification, and the explicitly authorized cross-process consent smoke passed.
-Tests make no live provider or paid calls. Secret, pin/submodule, Git sync, and
-artifact checks passed. The approximately 41,000-test Hermes suite was not run.
+Result: 99 backend tests and 9 native tests passed; Ruff, `ty`, dependency and
+Swift format checks, SwiftUI release app build/sign verification, and the
+explicitly authorized cross-process pinned-Hermes noop proof passed. Tests make
+no live provider or paid calls. Real cua-driver/TCC/UI automation was not run.
+Secret, pin/submodule, Git sync, and artifact checks passed. The approximately
+41,000-test Hermes suite was not run.
 
 ## Next action
 
-Phase 4A is complete. Do not begin Phase 4B without a new explicit brief. The
-recommended next boundary is production native lifecycle and stable signed-app
-consent-key enrollment; voice, computer control, LaunchAgent, local models,
-cloud services, accounts, telemetry, and distribution remain deferred until
-explicitly scoped.
+Phase 4B is complete. Do not begin another phase without a new explicit brief.
+The recommended next boundary is production native lifecycle and stable
+signed-app consent-key enrollment. Voice, autonomous/multi-step computer use,
+LaunchAgent, local models, cloud services, accounts, telemetry, and distribution
+remain deferred until explicitly scoped.

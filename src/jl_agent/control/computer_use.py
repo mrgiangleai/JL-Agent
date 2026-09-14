@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import re
@@ -102,7 +103,9 @@ class ComputerUseReadiness:
                 HealthState.UNAVAILABLE,
                 f"required macOS permissions are not ready: {summary}",
             )
-        return ProbeOutcome(HealthState.HEALTHY, "driver and required TCC grants are ready")
+        return ProbeOutcome(
+            HealthState.HEALTHY, "driver and required TCC grants are ready"
+        )
 
     def as_dict(self) -> dict[str, object]:
         probe = self.health_probe()
@@ -172,7 +175,7 @@ class ComputerUseTargetGuard:
     def __init__(self, foreground_probe: Callable[[], str | None]) -> None:
         self.foreground_probe = foreground_probe
 
-    def validate(self, request: "ControlRequest") -> None:
+    def validate(self, request: ControlRequest) -> None:
         from .permissions import COMPUTER_USE_MUTATING_ACTIONS
 
         if request.capability_id != "core.hermes.computer-use":
@@ -274,9 +277,9 @@ class HermesComputerUseReadinessProbe:
         root = str(self.hermes_root)
         if root not in sys.path:
             sys.path.insert(0, root)
-        from tools.computer_use.cua_backend_driver import resolve_cua_driver_cmd
-
-        return resolve_cua_driver_cmd()
+        module = importlib.import_module("tools.computer_use.cua_backend_driver")
+        resolver = module.resolve_cua_driver_cmd
+        return resolver()
 
     def _json_command(
         self, command: Sequence[str]
@@ -350,7 +353,8 @@ def _permission_statuses(
         MacOSPermissionStatus(
             MacOSPermissionKind.ACCESSIBILITY,
             accessibility,
-            "Lets CuaDriver inspect accessibility elements and deliver mouse or keyboard input.",
+            "Lets CuaDriver inspect accessibility elements and deliver mouse or "
+            "keyboard input.",
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
         ),
         MacOSPermissionStatus(
