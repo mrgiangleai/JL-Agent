@@ -160,8 +160,8 @@ enum NativeContractTests {
     )
     try check(computerResult.state == "completed", "computer-use proof did not complete")
     try check(
-      computerResult.output == "native-ipc-smoke-ok",
-      "unexpected computer-use fake output"
+      computerResult.output?.contains("\"mode\": \"ax\"") == true,
+      "pinned Hermes handler did not return the AX capture"
     )
     let activity = try client.activity(callerID: caller, sessionID: session)
     try check(activity.count >= 2, "safe activity omitted a proof")

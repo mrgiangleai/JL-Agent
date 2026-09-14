@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
 import subprocess
 import sys
@@ -33,8 +35,8 @@ from jl_agent.control.execution_adapter import (  # noqa: E402
 from jl_agent.control.health import ProbeOutcome  # noqa: E402
 from jl_agent.control.hermes_projection import HermesProjection  # noqa: E402
 from jl_agent.control.ipc import UnixSocketServer  # noqa: E402
-from jl_agent.control.request_state import SecureControlRequestHandler  # noqa: E402
 from jl_agent.control.registry import HealthState  # noqa: E402
+from jl_agent.control.request_state import SecureControlRequestHandler  # noqa: E402
 from jl_agent.control.router import (  # noqa: E402
     DeterministicModelRouter,
     RouterPolicy,
@@ -48,9 +50,37 @@ class FakeRuntime:
 
     def run(self, request: HermesRuntimeRequest) -> HermesRuntimeResult:
         self.requests.append(request)
+        if request.allowed_tool == "computer_use":
+            return self._run_pinned_computer_use(request)
         return HermesRuntimeResult(
             HermesExecutionStatus.COMPLETED, "native-ipc-smoke-ok"
         )
+
+    @staticmethod
+    def _run_pinned_computer_use(
+        request: HermesRuntimeRequest,
+    ) -> HermesRuntimeResult:
+        hermes_root = str(ROOT / "upstream" / "hermes-agent")
+        if hermes_root not in sys.path:
+            sys.path.insert(0, hermes_root)
+        previous = os.environ.get("HERMES_COMPUTER_USE_BACKEND")
+        os.environ["HERMES_COMPUTER_USE_BACKEND"] = "noop"
+        from tools.computer_use.tool import (  # noqa: PLC0415
+            handle_computer_use,
+            release_computer_use_session,
+        )
+
+        try:
+            arguments = json.loads(request.arguments_json)
+            result = handle_computer_use(arguments, session_id=request.session_id)
+        finally:
+            release_computer_use_session(request.session_id)
+            if previous is None:
+                os.environ.pop("HERMES_COMPUTER_USE_BACKEND", None)
+            else:
+                os.environ["HERMES_COMPUTER_USE_BACKEND"] = previous
+        output = result if isinstance(result, str) else json.dumps(result)
+        return HermesRuntimeResult(HermesExecutionStatus.COMPLETED, output)
 
 
 def main() -> int:
@@ -130,13 +160,19 @@ def main() -> int:
                             "kind": "accessibility",
                             "state": "granted",
                             "explanation": "Required for AX inspection and input.",
-                            "settings_url": "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                            "settings_url": (
+                                "x-apple.systempreferences:com.apple.preference."
+                                "security?Privacy_Accessibility"
+                            ),
                         },
                         {
                             "kind": "screenRecording",
                             "state": "granted",
                             "explanation": "Required for screen pixels.",
-                            "settings_url": "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+                            "settings_url": (
+                                "x-apple.systempreferences:com.apple.preference."
+                                "security?Privacy_ScreenCapture"
+                            ),
                         },
                     ],
                 },
@@ -182,7 +218,9 @@ def main() -> int:
             or computer_request.enabled_toolsets != ("computer_use",)
             or '"action":"capture"' not in computer_request.arguments_json
         ):
-            raise RuntimeError("native computer-use proof bypassed the exact Hermes tool")
+            raise RuntimeError(
+                "native computer-use proof bypassed the exact Hermes tool"
+            )
     finally:
         if service is not None:
             service.shutdown()
@@ -194,7 +232,7 @@ def main() -> int:
             timeout=20,
         )
         shutil.rmtree(runtime_root, ignore_errors=True)
-    print("Swift client, Python runtime, and fake-Hermes computer-use proof passed")
+    print("Swift client, Python runtime, and pinned-Hermes noop proof passed")
     return 0
 
 
