@@ -119,6 +119,44 @@ public struct JLRuntimeClient: Sendable {
     return try values.map(ActivityEvent.init(value:))
   }
 
+  public func voiceStatus(callerID: String, sessionID: String) throws -> VoiceStatus {
+    try voiceControl(operation: "voice-status", callerID: callerID, sessionID: sessionID)
+  }
+
+  public func startVoice(callerID: String, sessionID: String) throws -> VoiceStatus {
+    try voiceControl(operation: "voice-start", callerID: callerID, sessionID: sessionID)
+  }
+
+  public func stopVoice(callerID: String, sessionID: String) throws -> VoiceStatus {
+    try voiceControl(operation: "voice-stop", callerID: callerID, sessionID: sessionID)
+  }
+
+  public func startWake(callerID: String, sessionID: String) throws -> VoiceStatus {
+    try voiceControl(operation: "wake-start", callerID: callerID, sessionID: sessionID)
+  }
+
+  public func stopWake(callerID: String, sessionID: String) throws -> VoiceStatus {
+    try voiceControl(operation: "wake-stop", callerID: callerID, sessionID: sessionID)
+  }
+
+  public func voiceEvents(
+    callerID: String,
+    sessionID: String,
+    after: Int = 0,
+    limit: Int = 50
+  ) throws -> [VoiceEvent] {
+    let result = try authenticatedRequest(
+      operation: "voice-events",
+      payload: ["after": .integer(after), "limit": .integer(limit)],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    guard let values = result["events"]?.arrayValue else {
+      throw RuntimeClientError.malformedResponse
+    }
+    return try values.map(VoiceEvent.init(value:))
+  }
+
   public func prepare(
     draft: RequestDraft,
     requestID: String,
@@ -220,6 +258,20 @@ public struct JLRuntimeClient: Sendable {
       ),
       responseTimeout: responseTimeout
     )
+  }
+
+  private func voiceControl(
+    operation: String,
+    callerID: String,
+    sessionID: String
+  ) throws -> VoiceStatus {
+    let result = try authenticatedRequest(
+      operation: operation,
+      payload: [:],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try VoiceStatus(result: result)
   }
 
   private func request(

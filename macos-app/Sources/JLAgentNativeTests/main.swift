@@ -64,10 +64,80 @@ enum NativeContractTests {
     try serverExecutionErrorRetainsAuthoritativeRuntimeSnapshot()
     try expiredConsentIsRejectedLocally()
     try executeUsesBoundedLongResponseTimeout()
+    try voiceControlUsesAuthenticatedBoundedIPC()
+    try voiceEventsRejectRawAudioFields()
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     try missingEnrolledConsentKeyRequiresExplicitRotation()
-    print("13 native contract tests passed")
+    print("15 native contract tests passed")
+  }
+
+  private static func voiceControlUsesAuthenticatedBoundedIPC() throws {
+    let transport = StubTransport { request in
+      let envelope = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "voice envelope is malformed"
+      )
+      try check(envelope["operation"] as? String == "voice-start", "wrong operation")
+      try check(envelope["credential"] as? String != nil, "voice omitted credential")
+      try check((envelope["payload"] as? [String: Any])?.isEmpty == true, "voice payload")
+      return try response(
+        for: request,
+        ok: true,
+        result: voiceStatusResult(voiceActive: true),
+        error: nil
+      )
+    }
+    let status = try makeClient(transport: transport).startVoice(
+      callerID: "native-app", sessionID: "session-1"
+    )
+    try check(status.voice.active, "active voice state was lost")
+    try check(!status.toolExecutionEnabled, "voice tools were enabled")
+  }
+
+  private static func voiceEventsRejectRawAudioFields() throws {
+    let transport = StubTransport { request in
+      try response(
+        for: request,
+        ok: true,
+        result: [
+          "events": [
+            [
+              "sequence": 1,
+              "kind": "transcript",
+              "text": "hello",
+              "audio": "must-not-pass",
+            ]
+          ]
+        ],
+        error: nil
+      )
+    }
+    try expect(.malformedResponse) {
+      try makeClient(transport: transport).voiceEvents(
+        callerID: "native-app", sessionID: "session-1"
+      )
+    }
+  }
+
+  private static func voiceStatusResult(voiceActive: Bool) -> [String: Any] {
+    [
+      "enabled": true,
+      "activation_approved": true,
+      "owned_by_current_session": true,
+      "tool_execution_enabled": false,
+      "voice": [
+        "available": true,
+        "details": "ready",
+        "active": voiceActive,
+      ],
+      "wake": [
+        "available": true,
+        "phrase": "hey hermes",
+        "hint": "",
+        "active": false,
+      ],
+    ]
   }
 
   private static func executeUsesBoundedLongResponseTimeout() throws {

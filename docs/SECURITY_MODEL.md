@@ -118,6 +118,19 @@ export a sanitized audit summary. Raw secrets are never included in exports.
 
 ## Current implementation limitations
 
+Phase 5 voice and wake are disabled by default and require both
+`JL_AGENT_VOICE_ENABLED=1` and
+`JL_AGENT_VOICE_ACTIVATION_APPROVED=1` before a start operation can reach
+Hermes. The second flag is an operator assertion that the exact dependency/model
+and macOS Microphone step was reviewed; deterministic tests never set it for a
+real backend. Hermes remains responsible for capture, VAD, STT, wake detection,
+TTS, stop phrases, and cleanup. JL binds the process-wide owner to one
+authenticated caller/session and stores only bounded in-memory transcript/reply
+events for that owner. Raw audio is neither exposed over IPC nor added to the
+audit ledger. Every spoken turn passes an explicit empty toolset, so voice
+cannot execute tools in this Phase. The native app does not request or own
+Microphone TCC; the foreground Python runtime is the capture process.
+
 Phase 4B retains the native Keychain-backed client credential, Keychain RSA consent
 key, and a separate signature-authenticated consent socket. Normal IPC still
 cannot issue or activate approvals. The runtime creates an opaque, bounded,

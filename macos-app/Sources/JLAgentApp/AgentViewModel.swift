@@ -20,6 +20,9 @@ final class AgentViewModel: ObservableObject {
   @Published var pendingConsent: ConsentChallenge?
   @Published var activity: [ActivityEvent] = []
   @Published var computerUseStatus: ComputerUseStatus?
+  @Published var voiceStatus: VoiceStatus?
+  @Published var voiceEvents: [VoiceEvent] = []
+  @Published var voiceMessage = "Voice is off by default."
   @Published var runtimePID: Int?
   @Published var consentIdentityMatches = false
   @Published var isWorking = false
@@ -68,6 +71,7 @@ final class AgentViewModel: ObservableObject {
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
         await refreshActivity()
+        await refreshVoice()
       } catch {
         apply(error)
       }
@@ -89,6 +93,7 @@ final class AgentViewModel: ObservableObject {
           )
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
+        await refreshVoice()
       } catch {
         apply(error)
       }
@@ -197,6 +202,65 @@ final class AgentViewModel: ObservableObject {
       }.value
     } catch {
       if activity.isEmpty { resultText = display(error) }
+    }
+  }
+
+  func refreshVoice() async {
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    do {
+      let observed = try await Task.detached {
+        (
+          try client.voiceStatus(callerID: callerID, sessionID: sessionID),
+          try client.voiceEvents(callerID: callerID, sessionID: sessionID)
+        )
+      }.value
+      voiceStatus = observed.0
+      voiceEvents = observed.1
+      voiceMessage = Self.voiceSummary(observed.0)
+    } catch {
+      voiceMessage = display(error)
+    }
+  }
+
+  func startVoice() { updateVoice(.startVoice) }
+  func stopVoice() { updateVoice(.stopVoice) }
+  func startWake() { updateVoice(.startWake) }
+  func stopWake() { updateVoice(.stopWake) }
+
+  private enum VoiceOperation: Sendable {
+    case startVoice, stopVoice, startWake, stopWake
+  }
+
+  private func updateVoice(_ operation: VoiceOperation) {
+    guard !isWorking else { return }
+    isWorking = true
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    Task {
+      do {
+        let status = try await Task.detached {
+          switch operation {
+          case .startVoice:
+            try client.startVoice(callerID: callerID, sessionID: sessionID)
+          case .stopVoice:
+            try client.stopVoice(callerID: callerID, sessionID: sessionID)
+          case .startWake:
+            try client.startWake(callerID: callerID, sessionID: sessionID)
+          case .stopWake:
+            try client.stopWake(callerID: callerID, sessionID: sessionID)
+          }
+        }.value
+        voiceStatus = status
+        voiceMessage = Self.voiceSummary(status)
+        isWorking = false
+        await refreshVoice()
+      } catch {
+        voiceMessage = display(error)
+        isWorking = false
+      }
     }
   }
 
@@ -361,5 +425,19 @@ final class AgentViewModel: ObservableObject {
 
   var runtimePIDText: String {
     runtimePID.map(String.init) ?? "not running / unreachable"
+  }
+
+  private static func voiceSummary(_ status: VoiceStatus) -> String {
+    if !status.enabled {
+      return "Voice is disabled in the foreground runtime."
+    }
+    if !status.activationApproved {
+      return "Voice activation awaits explicit dependency/model and Microphone approval."
+    }
+    if status.voice.active { return "Listening for a spoken turn. Tools are disabled." }
+    if status.wake.active {
+      return "Wake word armed: \(status.wake.phrase ?? "configured phrase")."
+    }
+    return "Voice is ready but not listening. Tools are disabled."
   }
 }

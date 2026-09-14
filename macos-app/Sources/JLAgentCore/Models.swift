@@ -242,6 +242,92 @@ public struct ActivityEvent: Identifiable, Equatable, Sendable {
   ]
 }
 
+public struct VoiceCapabilityStatus: Equatable, Sendable {
+  public let available: Bool
+  public let active: Bool
+  public let details: String?
+  public let phrase: String?
+  public let hint: String?
+
+  init(value: [String: JSONValue]) throws {
+    guard
+      let available = value["available"]?.boolValue,
+      let active = value["active"]?.boolValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.available = available
+    self.active = active
+    self.details = value["details"]?.stringValue
+    self.phrase = value["phrase"]?.stringValue
+    self.hint = value["hint"]?.stringValue
+  }
+}
+
+public struct VoiceStatus: Equatable, Sendable {
+  public let enabled: Bool
+  public let activationApproved: Bool
+  public let ownedByCurrentSession: Bool
+  public let toolExecutionEnabled: Bool
+  public let voice: VoiceCapabilityStatus
+  public let wake: VoiceCapabilityStatus
+
+  init(result: [String: JSONValue]) throws {
+    guard
+      Set(result.keys) == [
+        "enabled", "activation_approved", "owned_by_current_session",
+        "tool_execution_enabled", "voice", "wake",
+      ],
+      let enabled = result["enabled"]?.boolValue,
+      let activationApproved = result["activation_approved"]?.boolValue,
+      let owned = result["owned_by_current_session"]?.boolValue,
+      let toolExecution = result["tool_execution_enabled"]?.boolValue,
+      let voice = result["voice"]?.objectValue,
+      let wake = result["wake"]?.objectValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.enabled = enabled
+    self.activationApproved = activationApproved
+    self.ownedByCurrentSession = owned
+    self.toolExecutionEnabled = toolExecution
+    self.voice = try VoiceCapabilityStatus(value: voice)
+    self.wake = try VoiceCapabilityStatus(value: wake)
+  }
+}
+
+public struct VoiceEvent: Identifiable, Equatable, Sendable {
+  public var id: Int { sequence }
+  public let sequence: Int
+  public let kind: String
+  public let text: String?
+  public let status: String?
+  public let code: String?
+
+  init(value: JSONValue) throws {
+    guard
+      let item = value.objectValue,
+      Set(item.keys).isSubset(of: ["sequence", "kind", "text", "status", "code"]),
+      let sequence = item["sequence"]?.intValue,
+      sequence > 0,
+      let kind = item["kind"]?.stringValue,
+      Self.allowedKinds.contains(kind)
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.sequence = sequence
+    self.kind = kind
+    self.text = item["text"]?.stringValue
+    self.status = item["status"]?.stringValue
+    self.code = item["code"]?.stringValue
+  }
+
+  private static let allowedKinds: Set<String> = [
+    "voice_status", "wake_status", "wake_detected", "transcript", "reply",
+    "voice_error",
+  ]
+}
+
 public struct ConsentChallenge: Identifiable, Equatable, Sendable {
   public var id: String { consentID }
   public let consentID: String

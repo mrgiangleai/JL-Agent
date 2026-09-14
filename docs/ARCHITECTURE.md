@@ -125,7 +125,16 @@ The foreground runtime remains operator-started through the repository-owned
 development script. The app reports authenticated PID/state but does not embed
 a Python path or become a supervisor. Active sockets reject duplicate runtime
 ownership and stale owned sockets remain recoverable. No LaunchAgent,
-privileged helper, final distribution signing, or voice surface exists.
+privileged helper, or final distribution signing exists.
+
+Phase 5 adds a narrow voice/wake surface to the same authenticated socket. A JL
+coordinator owns an exact caller/session lease, off-by-default feature and
+activation gates, and bounded in-memory transcript/reply events. Its adapter
+delegates microphone capture, VAD, STT, wake detection, pause/resume, stop
+phrases, TTS, and audio cleanup to pinned Hermes. Spoken transcripts enter
+Hermes as text-only turns with an explicit empty toolset; they cannot invoke a
+tool or bypass JL's existing exact action path. The SwiftUI app remains only an
+IPC control/status client and never captures PCM or imports Hermes.
 
 ### Execution Gate and Audit Ledger
 
@@ -170,6 +179,12 @@ input actions use the existing exact consent path. Before mutating dispatch, the
 gate revalidates the approved app/target/fresh foreground identity, then the
 Phase 3B adapter invokes Hermes. Hermes retains sticky PID/window and snapshot
 token validation, input dispatch, screenshots, and its own guardrails.
+
+In Phase 5, authenticated `voice-status`, `voice-start`, `voice-stop`,
+`voice-events`, `wake-start`, and `wake-stop` operations control one
+process-wide Hermes voice/wake owner. Raw audio never crosses IPC and is not
+written to JL's audit ledger. A separate activation gate prevents any live
+microphone or first-use dependency/model path until explicitly approved.
 
 ## External component rule
 

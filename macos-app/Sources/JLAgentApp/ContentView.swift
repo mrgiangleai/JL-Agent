@@ -126,6 +126,45 @@ struct ContentView: View {
         }
       }
 
+      GroupBox("Voice + Wake Word") {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack {
+            Text(viewModel.voiceMessage)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Spacer()
+            Button("Refresh") { Task { await viewModel.refreshVoice() } }
+          }
+          HStack {
+            Button("Start Voice") { viewModel.startVoice() }
+              .disabled(!canStartVoice)
+            Button("Stop Voice") { viewModel.stopVoice() }
+              .disabled(viewModel.voiceStatus?.voice.active != true || viewModel.isWorking)
+            Button("Arm Wake") { viewModel.startWake() }
+              .disabled(!canStartWake)
+            Button("Stop Wake") { viewModel.stopWake() }
+              .disabled(viewModel.voiceStatus?.wake.active != true || viewModel.isWorking)
+            Spacer()
+            Text("Voice tool execution: disabled")
+              .font(.caption.bold())
+              .foregroundStyle(.green)
+          }
+          if !viewModel.voiceEvents.isEmpty {
+            ScrollView {
+              VStack(alignment: .leading, spacing: 4) {
+                ForEach(viewModel.voiceEvents) { event in
+                  Text(voiceEventText(event))
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+              }
+            }
+            .frame(minHeight: 60, maxHeight: 110)
+          }
+        }
+      }
+
       GroupBox("Recent safe activity") {
         List(viewModel.activity) { item in
           HStack {
@@ -173,6 +212,23 @@ struct ContentView: View {
       ? "signed \(status.driverBundleID ?? "CuaDriver") / \(status.driverTeamID ?? "team")"
       : "CuaDriver.app identity unavailable"
     return "cua-driver\(version), \(identity): \(status.detail)"
+  }
+
+  private var canStartVoice: Bool {
+    guard let status = viewModel.voiceStatus else { return false }
+    return status.enabled && status.activationApproved && status.voice.available
+      && !status.voice.active && !viewModel.isWorking
+  }
+
+  private var canStartWake: Bool {
+    guard let status = viewModel.voiceStatus else { return false }
+    return status.enabled && status.activationApproved && status.wake.available
+      && !status.wake.active && !viewModel.isWorking
+  }
+
+  private func voiceEventText(_ event: VoiceEvent) -> String {
+    let value = event.text ?? event.status ?? event.code ?? ""
+    return "#\(event.sequence) \(event.kind): \(value)"
   }
 }
 

@@ -80,6 +80,7 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
         self.assertEqual(composed.paths.socket.parent, composed.paths.root)
         self.assertTrue(composed.paths.credential.exists())
         self.assertTrue(composed.paths.audit.exists())
+        self.assertIsNotNone(composed.server.handler.voice_handler)  # type: ignore[attr-defined]
         composed.shutdown()
 
     def test_stopped_runtime_credential_can_rotate_without_exposure(self) -> None:

@@ -10,6 +10,7 @@ import signal
 import stat
 import sys
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,6 +38,13 @@ from .control.hermes_projection import HERMES_REVISION, HermesProjection
 from .control.ipc import UnixSocketServer
 from .control.request_state import SecureControlRequestHandler
 from .control.router import DeterministicModelRouter, RouterPolicy
+from .control.voice import (
+    HermesTextOnlyTurnRunner,
+    HermesVoiceBackend,
+    VoiceCoordinator,
+    voice_activation_approved_from_environment,
+    voice_enabled_from_environment,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,11 +155,13 @@ class JLRuntimeService:
         server: UnixSocketServer,
         consent_server: UnixSocketServer | None = None,
         consent_available: bool = False,
+        voice_shutdown: Callable[[], None] | None = None,
     ) -> None:
         self.paths = paths
         self.server = server
         self.consent_server = consent_server
         self.consent_available = consent_available
+        self.voice_shutdown = voice_shutdown
         self._consent_thread: threading.Thread | None = None
         self._readiness_identity: tuple[int, int] | None = None
 
@@ -184,6 +194,8 @@ class JLRuntimeService:
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=1)
         self._consent_thread = None
+        if self.voice_shutdown is not None:
+            self.voice_shutdown()
         self._remove_readiness()
 
     def __enter__(self) -> JLRuntimeService:
@@ -295,6 +307,12 @@ def build_runtime_service(
     credentials = FileCredentialProvider(paths.credential)
     credentials.load_or_create()
     verifier = _load_consent_verifier(paths.consent_public_key)
+    voice = VoiceCoordinator(
+        backend=HermesVoiceBackend(root / "upstream" / "hermes-agent"),
+        turn_runner=HermesTextOnlyTurnRunner(root / "upstream" / "hermes-agent"),
+        enabled=voice_enabled_from_environment(),
+        activation_approved=voice_activation_approved_from_environment(),
+    )
 
     def runtime_status() -> dict[str, object]:
         computer_use = computer_use_probe.inspect()
@@ -331,6 +349,7 @@ def build_runtime_service(
         consent_coordinator=consent,
         status_provider=runtime_status,
         activity_reader=audit.safe_activity,
+        voice_handler=voice.handle,
     )
     consent_handler = TrustedConsentRequestHandler(
         coordinator=consent,
@@ -344,6 +363,7 @@ def build_runtime_service(
         server=UnixSocketServer(paths.socket, handler),
         consent_server=UnixSocketServer(paths.consent_socket, consent_handler),
         consent_available=verifier.available,
+        voice_shutdown=voice.shutdown,
     )
 
 

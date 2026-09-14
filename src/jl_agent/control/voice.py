@@ -152,6 +152,11 @@ class VoiceCoordinator:
                     on_stop_phrase=self._on_stop_phrase,
                 )
             except Exception as error:
+                if self._wake_active:
+                    try:
+                        self._backend.resume_wake()
+                    except Exception:
+                        self._append("voice_error", code="wake_resume_failed")
                 self._release_if_idle()
                 raise VoiceError("voice_start_failed") from error
             self._voice_active = True
@@ -224,6 +229,24 @@ class VoiceCoordinator:
                 for item in self._events
                 if cast(int, item["sequence"]) > after_value
             ][:limit_value]
+
+    def shutdown(self) -> None:
+        """Best-effort release of Hermes' process-wide microphone owners."""
+        with self._lock:
+            if self._voice_active:
+                try:
+                    self._backend.stop_voice()
+                except Exception:
+                    pass
+            if self._wake_active:
+                try:
+                    self._backend.stop_wake()
+                except Exception:
+                    pass
+            self._voice_active = False
+            self._wake_active = False
+            self._turn_active = False
+            self._owner = None
 
     def _on_transcript(self, transcript: str) -> None:
         text = transcript.strip()[:16_384]

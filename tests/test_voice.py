@@ -18,6 +18,7 @@ class FakeHermesVoiceBackend:
         self.spoken: list[str] = []
         self.voice_starts = 0
         self.wake_starts = 0
+        self.stopped: list[str] = []
 
     def requirements(self) -> dict[str, object]:
         return {
@@ -35,14 +36,14 @@ class FakeHermesVoiceBackend:
         on_status("listening")
 
     def stop_voice(self) -> None:
-        return
+        self.stopped.append("voice")
 
     def start_wake(self, *, on_wake) -> None:
         self.wake_starts += 1
         self.wake_callback = on_wake
 
     def stop_wake(self) -> None:
-        return
+        self.stopped.append("wake")
 
     def pause_wake(self) -> None:
         return
@@ -126,6 +127,17 @@ class VoiceCoordinatorTests(unittest.TestCase):
         self.assertTrue(status["wake"]["active"])
         self.assertTrue(status["voice"]["active"])
         self.assertFalse(status["tool_execution_enabled"])
+
+    def test_shutdown_releases_both_hermes_singletons(self) -> None:
+        self.voice.start_wake("caller", "session")
+        self.voice.start_voice("caller", "session")
+
+        self.voice.shutdown()
+
+        self.assertEqual(self.backend.stopped, ["voice", "wake"])
+        status = self.voice.status("caller", "session")
+        self.assertFalse(status["voice"]["active"])
+        self.assertFalse(status["wake"]["active"])
 
     def test_event_query_is_strictly_bounded(self) -> None:
         with self.assertRaisesRegex(VoiceError, "malformed_payload"):
