@@ -42,6 +42,7 @@ from .control.voice import (
     HermesTextOnlyTurnRunner,
     HermesVoiceBackend,
     VoiceCoordinator,
+    macos_say_tts_config,
     voice_activation_approved_from_environment,
     voice_enabled_from_environment,
 )
@@ -314,6 +315,7 @@ def build_runtime_service(
             sherpa_manifest_path=(
                 root / "config" / "models" / "sherpa-gigaspeech-kws-fp32.json"
             ),
+            tts_config=macos_say_tts_config() if sys.platform == "darwin" else None,
         ),
         turn_runner=HermesTextOnlyTurnRunner(root / "upstream" / "hermes-agent"),
         enabled=voice_enabled_from_environment(),

@@ -77,7 +77,31 @@ class VoiceBackend(Protocol):
     def speak(self, text: str) -> None: ...
 
 
+class _TTSConfigModule(Protocol):
+    _load_tts_config: Callable[[], dict[str, Any]]
+
+
 RunAsync = Callable[[Callable[[], None]], None]
+_TTS_CONFIG_LOCK = threading.RLock()
+
+
+def macos_say_tts_config() -> dict[str, object]:
+    """Hermes command-provider config for the native macOS speech engine."""
+
+    return {
+        "provider": "macos-say",
+        "providers": {
+            "macos-say": {
+                "type": "command",
+                "command": (
+                    "/usr/bin/say -o {output_path} --file-format=WAVE "
+                    "--data-format=LEI16@22050 -f {input_path}"
+                ),
+                "output_format": "wav",
+                "timeout": 20,
+            }
+        },
+    }
 
 
 def _daemon(task: Callable[[], None]) -> None:
@@ -496,10 +520,12 @@ class HermesVoiceBackend:
         *,
         model_cache_root: Path | None = None,
         sherpa_manifest_path: Path | None = None,
+        tts_config: Mapping[str, Any] | None = None,
     ) -> None:
         self.hermes_root = hermes_root
         self._model_cache_root = model_cache_root
         self._sherpa_manifest_path = sherpa_manifest_path
+        self._tts_config = dict(tts_config) if tts_config is not None else None
         self._wake_owner = object()
         if model_cache_root is not None:
             os.environ.setdefault(
@@ -571,7 +597,19 @@ class HermesVoiceBackend:
 
     def speak(self, text: str) -> None:
         self._activate_import_path()
-        import_module("hermes_cli.voice").speak_text(text)
+        voice = import_module("hermes_cli.voice")
+        if self._tts_config is None:
+            voice.speak_text(text)
+            return
+        tts_tool = cast(_TTSConfigModule, import_module("tools.tts_tool"))
+        config = self._tts_config
+        with _TTS_CONFIG_LOCK:
+            original = tts_tool._load_tts_config
+            tts_tool._load_tts_config = lambda: dict(config)
+            try:
+                voice.speak_text(text)
+            finally:
+                tts_tool._load_tts_config = original
 
     def _activate_import_path(self) -> None:
         root = str(self.hermes_root)

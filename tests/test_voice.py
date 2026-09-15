@@ -14,6 +14,7 @@ from jl_agent.control.voice import (
     HermesVoiceBackend,
     VoiceCoordinator,
     VoiceError,
+    macos_say_tts_config,
     verify_sherpa_model_assets,
 )
 
@@ -257,6 +258,42 @@ class VoiceCoordinatorTests(unittest.TestCase):
             asset.write_bytes(b"tampered")
             with self.assertRaisesRegex(RuntimeError, "integrity check failed"):
                 verify_sherpa_model_assets(model, manifest, "test-model")
+
+    def test_macos_say_adapter_pins_wave_pcm_format(self) -> None:
+        config = macos_say_tts_config()
+        providers = cast(dict[str, object], config["providers"])
+        provider = cast(dict[str, object], providers["macos-say"])
+        command = cast(str, provider["command"])
+
+        self.assertEqual(provider["output_format"], "wav")
+        self.assertIn("--file-format=WAVE", command)
+        self.assertIn("--data-format=LEI16@22050", command)
+        self.assertIn("-f {input_path}", command)
+
+    def test_hermes_backend_scopes_macos_say_config_to_speak(self) -> None:
+        expected = macos_say_tts_config()
+        observed: list[object] = []
+        original_loader = lambda: {"provider": "original"}  # noqa: E731
+        tts_tool = ModuleType("tools.tts_tool")
+        tts_tool._load_tts_config = original_loader  # type: ignore[attr-defined]
+        voice = ModuleType("hermes_cli.voice")
+
+        def speak_text(text: str) -> None:
+            observed.extend([text, tts_tool._load_tts_config()])
+
+        voice.speak_text = speak_text  # type: ignore[attr-defined]
+
+        def fake_import(name: str) -> ModuleType:
+            return voice if name == "hermes_cli.voice" else tts_tool
+
+        backend = HermesVoiceBackend(
+            __import__("pathlib").Path("/unused"), tts_config=expected
+        )
+        with patch("jl_agent.control.voice.import_module", side_effect=fake_import):
+            backend.speak("hello")
+
+        self.assertEqual(observed, ["hello", expected])
+        self.assertIs(tts_tool._load_tts_config, original_loader)
 
 
 if __name__ == "__main__":
