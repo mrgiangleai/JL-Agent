@@ -324,7 +324,7 @@ public struct VoiceEvent: Identifiable, Equatable, Sendable {
 
   private static let allowedKinds: Set<String> = [
     "voice_status", "wake_status", "wake_detected", "transcript", "reply",
-    "voice_error",
+    "voice_error", "wake_phrase_test", "wake_phrase_saved",
   ]
 }
 

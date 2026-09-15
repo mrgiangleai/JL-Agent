@@ -23,6 +23,9 @@ final class AgentViewModel: ObservableObject {
   @Published var voiceStatus: VoiceStatus?
   @Published var voiceEvents: [VoiceEvent] = []
   @Published var voiceMessage = "Voice is off by default."
+  @Published var wakePhraseDraft = ""
+  @Published var testedWakePhrase: String?
+  @Published var wakePhraseMessage = "Test a phrase before making it the default."
   @Published var runtimePID: Int?
   @Published var consentIdentityMatches = false
   @Published var isWorking = false
@@ -214,11 +217,18 @@ final class AgentViewModel: ObservableObject {
         try client.voiceStatus(callerID: callerID, sessionID: sessionID)
       }.value
       voiceStatus = status
+      if wakePhraseDraft.isEmpty { wakePhraseDraft = status.wake.phrase ?? "hey hermes" }
       voiceMessage = Self.voiceSummary(status)
       if status.ownedByCurrentSession {
         voiceEvents = try await Task.detached {
           try client.voiceEvents(callerID: callerID, sessionID: sessionID)
         }.value
+        if let passed = voiceEvents.last(where: {
+          $0.kind == "wake_phrase_test" && $0.status == "passed"
+        })?.text {
+          testedWakePhrase = passed
+          wakePhraseMessage = "Test passed. This phrase can now become the default."
+        }
       } else {
         voiceEvents = []
       }
@@ -231,6 +241,54 @@ final class AgentViewModel: ObservableObject {
   func stopVoice() { updateVoice(.stopVoice) }
   func startWake() { updateVoice(.startWake) }
   func stopWake() { updateVoice(.stopWake) }
+
+  func testWakePhrase() {
+    let phrase = normalizedWakePhrase
+    guard !isWorking else { return }
+    isWorking = true
+    Task {
+      do {
+        voiceStatus = try await Task.detached {
+          try self.client.testWakePhrase(
+            phrase, callerID: self.callerID, sessionID: self.sessionID
+          )
+        }.value
+        testedWakePhrase = nil
+        wakePhraseMessage = "Listening for ‘\(phrase)’. Say it, then refresh the test result."
+      } catch {
+        wakePhraseMessage = display(error)
+      }
+      isWorking = false
+    }
+  }
+
+  func saveWakePhrase() {
+    let phrase = normalizedWakePhrase
+    guard testedWakePhrase == phrase, !isWorking else { return }
+    isWorking = true
+    Task {
+      do {
+        voiceStatus = try await Task.detached {
+          try self.client.setWakePhrase(
+            phrase, callerID: self.callerID, sessionID: self.sessionID
+          )
+        }.value
+        wakePhraseMessage = "Default wake phrase saved."
+      } catch {
+        wakePhraseMessage = display(error)
+      }
+      isWorking = false
+    }
+  }
+
+  var normalizedWakePhrase: String {
+    wakePhraseDraft.split(whereSeparator: { $0.isWhitespace })
+      .joined(separator: " ").lowercased()
+  }
+
+  var canSaveWakePhrase: Bool {
+    testedWakePhrase == normalizedWakePhrase && !isWorking
+  }
 
   private enum VoiceOperation: Sendable {
     case startVoice, stopVoice, startWake, stopWake

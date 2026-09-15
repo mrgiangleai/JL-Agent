@@ -11,5 +11,11 @@ struct JLAgentDesktopApp: App {
         .task { viewModel.initialize() }
     }
     .windowResizability(.contentMinSize)
+
+    Settings {
+      WakePhraseSettingsView(viewModel: viewModel)
+        .frame(width: 460)
+        .padding()
+    }
   }
 }

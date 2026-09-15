@@ -29,7 +29,7 @@ class FakeBackend:
     def stop_voice(self) -> None:
         pass
 
-    def start_wake(self, *, on_wake) -> None:
+    def start_wake(self, *, on_wake, phrase: str) -> None:
         pass
 
     def stop_wake(self) -> None:
@@ -105,6 +105,13 @@ class VoiceIPCTests(unittest.TestCase):
         response = self.request("voice-start", {"surprise": True})
         self.assertFalse(response.ok)
         self.assertEqual(response.error_code, "malformed_payload")
+
+    def test_wake_phrase_operations_are_authenticated_and_test_gated(self) -> None:
+        started = self.request("wake-test-start", {"phrase": "hello jl"})
+        self.assertTrue(started.ok)
+        denied = self.request("wake-phrase-set", {"phrase": "hello jl"})
+        self.assertFalse(denied.ok)
+        self.assertEqual(denied.error_code, "wake_phrase_not_tested")
 
 
 if __name__ == "__main__":

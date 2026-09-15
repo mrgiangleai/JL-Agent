@@ -136,7 +136,7 @@ struct ContentView: View {
             Button("Refresh") { Task { await viewModel.refreshVoice() } }
           }
           HStack {
-            Button("Start Voice") { viewModel.startVoice() }
+            Button("Call JL") { viewModel.startVoice() }
               .disabled(!canStartVoice)
             Button("Stop Voice") { viewModel.stopVoice() }
               .disabled(viewModel.voiceStatus?.voice.active != true || viewModel.isWorking)

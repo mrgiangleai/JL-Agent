@@ -21,6 +21,7 @@ class FakeHermesVoiceBackend:
         self.spoken: list[str] = []
         self.voice_starts = 0
         self.wake_starts = 0
+        self.wake_phrases: list[str] = []
         self.stopped: list[str] = []
 
     def requirements(self) -> dict[str, object]:
@@ -41,8 +42,9 @@ class FakeHermesVoiceBackend:
     def stop_voice(self) -> None:
         self.stopped.append("voice")
 
-    def start_wake(self, *, on_wake) -> None:
+    def start_wake(self, *, on_wake, phrase: str) -> None:
         self.wake_starts += 1
+        self.wake_phrases.append(phrase)
         self.wake_callback = on_wake
 
     def stop_wake(self) -> None:
@@ -130,6 +132,36 @@ class VoiceCoordinatorTests(unittest.TestCase):
         self.assertTrue(status["wake"]["active"])
         self.assertTrue(status["voice"]["active"])
         self.assertFalse(status["tool_execution_enabled"])
+
+    def test_wake_phrase_must_pass_test_before_becoming_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = __import__("pathlib").Path(temporary) / "wake-phrase.json"
+            voice = VoiceCoordinator(
+                backend=self.backend,
+                turn_runner=lambda _: "",
+                enabled=True,
+                activation_approved=True,
+                wake_phrase_path=store,
+            )
+            with self.assertRaisesRegex(VoiceError, "wake_phrase_not_tested"):
+                voice.set_wake_phrase("caller", "session", "hello jl")
+
+            voice.start_wake_test("caller", "session", "hello jl")
+            self.assertEqual(self.backend.wake_phrases[-1], "hello jl")
+            assert self.backend.wake_callback is not None
+            self.backend.wake_callback()
+            status = voice.set_wake_phrase("caller", "session", "hello jl")
+
+            self.assertEqual(status["wake"]["phrase"], "hello jl")
+            self.assertEqual(
+                __import__("json").loads(store.read_text())["phrase"], "hello jl"
+            )
+            self.assertEqual(self.backend.voice_starts, 0)
+
+    def test_invalid_wake_phrase_fails_closed(self) -> None:
+        for phrase in ("", "a", "x" * 65, "hey/hermes"):
+            with self.assertRaisesRegex(VoiceError, "invalid_wake_phrase"):
+                self.voice.start_wake_test("caller", "session", phrase)
 
     def test_shutdown_releases_both_hermes_singletons(self) -> None:
         self.voice.start_wake("caller", "session")

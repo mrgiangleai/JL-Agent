@@ -181,10 +181,13 @@ Phase 3B adapter invokes Hermes. Hermes retains sticky PID/window and snapshot
 token validation, input dispatch, screenshots, and its own guardrails.
 
 In Phase 5, authenticated `voice-status`, `voice-start`, `voice-stop`,
-`voice-events`, `wake-start`, and `wake-stop` operations control one
+`voice-events`, `wake-start`, `wake-stop`, `wake-test-start`, and
+`wake-phrase-set` operations control one
 process-wide Hermes voice/wake owner. Raw audio never crosses IPC and is not
 written to JL's audit ledger. A separate activation gate prevents any live
 microphone or first-use dependency/model path until explicitly approved.
+The manual **Call JL** path starts voice without wake detection. JL persists a
+candidate wake phrase only after a session-bound Hermes detection test passes.
 
 ## External component rule
 

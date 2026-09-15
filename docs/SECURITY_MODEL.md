@@ -130,6 +130,9 @@ events for that owner. Raw audio is neither exposed over IPC nor added to the
 audit ledger. Every spoken turn passes an explicit empty toolset, so voice
 cannot execute tools in this Phase. The native app does not request or own
 Microphone TCC; the foreground Python runtime is the capture process.
+Candidate wake phrases are normalized and bounded, then must pass a
+session-owned Hermes detection test before becoming the private persisted
+default. Manual **Call JL** remains separately gated and independent of wake.
 
 Phase 4B retains the native Keychain-backed client credential, Keychain RSA consent
 key, and a separate signature-authenticated consent socket. Normal IPC still

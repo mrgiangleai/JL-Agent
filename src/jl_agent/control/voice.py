@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import stat
 import sys
 import threading
 from collections import deque
@@ -32,7 +34,7 @@ class VoiceBackend(Protocol):
     ) -> None: ...
 
     def stop_voice(self) -> None: ...
-    def start_wake(self, *, on_wake: Callable[[], None]) -> None: ...
+    def start_wake(self, *, on_wake: Callable[[], None], phrase: str) -> None: ...
     def stop_wake(self) -> None: ...
     def pause_wake(self) -> None: ...
     def resume_wake(self) -> None: ...
@@ -62,6 +64,7 @@ class VoiceCoordinator:
         activation_approved: bool = False,
         event_capacity: int = 100,
         run_async: RunAsync = _daemon,
+        wake_phrase_path: Path | None = None,
     ) -> None:
         self._backend = backend
         self._turn_runner = turn_runner
@@ -75,6 +78,10 @@ class VoiceCoordinator:
         self._wake_active = False
         self._turn_active = False
         self._sequence = 0
+        self._wake_phrase_path = wake_phrase_path
+        self._wake_phrase = self._load_wake_phrase()
+        self._tested_phrase: str | None = None
+        self._wake_test_active = False
 
     def handle(
         self,
@@ -95,6 +102,14 @@ class VoiceCoordinator:
         if operation == "wake-start":
             self._require_empty(payload)
             return self.start_wake(caller_id, session_id)
+        if operation == "wake-test-start":
+            return self.start_wake_test(
+                caller_id, session_id, self._phrase_payload(payload)
+            )
+        if operation == "wake-phrase-set":
+            return self.set_wake_phrase(
+                caller_id, session_id, self._phrase_payload(payload)
+            )
         if operation == "wake-stop":
             self._require_empty(payload)
             return self.stop_wake(caller_id, session_id)
@@ -111,14 +126,10 @@ class VoiceCoordinator:
         voice_requirements = requirements.get("voice")
         wake_requirements = requirements.get("wake")
         voice_status = (
-            dict(voice_requirements)
-            if isinstance(voice_requirements, Mapping)
-            else {}
+            dict(voice_requirements) if isinstance(voice_requirements, Mapping) else {}
         )
         wake_status = (
-            dict(wake_requirements)
-            if isinstance(wake_requirements, Mapping)
-            else {}
+            dict(wake_requirements) if isinstance(wake_requirements, Mapping) else {}
         )
         with self._lock:
             current = self._owner == (caller_id, session_id)
@@ -133,6 +144,7 @@ class VoiceCoordinator:
                 },
                 "wake": {
                     **wake_status,
+                    "phrase": self._wake_phrase,
                     "active": self._wake_active and current,
                 },
             }
@@ -183,12 +195,51 @@ class VoiceCoordinator:
             if self._wake_active:
                 return self.status(caller_id, session_id)
             try:
-                self._backend.start_wake(on_wake=self._on_wake)
+                self._backend.start_wake(
+                    on_wake=self._on_wake, phrase=self._wake_phrase
+                )
             except Exception as error:
                 self._release_if_idle()
                 raise VoiceError("wake_start_failed") from error
             self._wake_active = True
             self._append("wake_status", status="listening")
+        return self.status(caller_id, session_id)
+
+    def start_wake_test(
+        self, caller_id: str, session_id: str, phrase: str
+    ) -> dict[str, object]:
+        phrase = self._normalize_phrase(phrase)
+        self._require_activation()
+        with self._lock:
+            self._claim(caller_id, session_id)
+            if self._wake_active or self._voice_active:
+                raise VoiceError("voice_busy")
+            self._wake_test_active = True
+            try:
+                self._backend.start_wake(
+                    on_wake=lambda: self._on_wake_test(phrase), phrase=phrase
+                )
+            except Exception as error:
+                self._wake_test_active = False
+                self._release_if_idle()
+                raise VoiceError("wake_test_start_failed") from error
+            self._wake_active = True
+            self._append("wake_phrase_test", status="listening", text=phrase)
+        return self.status(caller_id, session_id)
+
+    def set_wake_phrase(
+        self, caller_id: str, session_id: str, phrase: str
+    ) -> dict[str, object]:
+        phrase = self._normalize_phrase(phrase)
+        with self._lock:
+            if self._tested_phrase != phrase:
+                raise VoiceError("wake_phrase_not_tested")
+            self._require_owner(caller_id, session_id)
+            self._save_wake_phrase(phrase)
+            self._wake_phrase = phrase
+            self._append("wake_phrase_saved", text=phrase)
+            self._tested_phrase = None
+            self._release_if_idle()
         return self.status(caller_id, session_id)
 
     def stop_wake(self, caller_id: str, session_id: str) -> dict[str, object]:
@@ -199,6 +250,7 @@ class VoiceCoordinator:
             except Exception as error:
                 raise VoiceError("wake_stop_failed") from error
             self._wake_active = False
+            self._wake_test_active = False
             self._append("wake_status", status="idle")
             self._release_if_idle()
         return self.status(caller_id, session_id)
@@ -245,6 +297,7 @@ class VoiceCoordinator:
                     pass
             self._voice_active = False
             self._wake_active = False
+            self._wake_test_active = False
             self._turn_active = False
             self._owner = None
 
@@ -303,6 +356,20 @@ class VoiceCoordinator:
                 with self._lock:
                     self._append("voice_error", code=error.code)
 
+    def _on_wake_test(self, phrase: str) -> None:
+        with self._lock:
+            if not self._wake_test_active:
+                return
+            self._tested_phrase = phrase
+            self._wake_test_active = False
+            self._wake_active = False
+            self._append("wake_phrase_test", status="passed", text=phrase)
+        try:
+            self._backend.stop_wake()
+        except Exception:
+            with self._lock:
+                self._append("voice_error", code="wake_test_stop_failed")
+
     def _safe_requirements(self) -> Mapping[str, Any]:
         try:
             return self._backend.requirements()
@@ -331,6 +398,48 @@ class VoiceCoordinator:
     def _release_if_idle(self) -> None:
         if not self._voice_active and not self._wake_active:
             self._owner = None
+
+    def _load_wake_phrase(self) -> str:
+        if self._wake_phrase_path is None:
+            return "hey hermes"
+        try:
+            details = self._wake_phrase_path.lstat()
+            if (
+                not stat.S_ISREG(details.st_mode)
+                or details.st_uid != os.geteuid()
+                or details.st_size > 1024
+            ):
+                return "hey hermes"
+            value = json.loads(self._wake_phrase_path.read_text(encoding="utf-8"))
+            return self._normalize_phrase(value["phrase"])
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return "hey hermes"
+
+    def _save_wake_phrase(self, phrase: str) -> None:
+        if self._wake_phrase_path is None:
+            return
+        self._wake_phrase_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary = self._wake_phrase_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"phrase": phrase}), encoding="utf-8")
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, self._wake_phrase_path)
+
+    @classmethod
+    def _phrase_payload(cls, payload: Mapping[str, Any]) -> str:
+        if set(payload) != {"phrase"}:
+            raise VoiceError("malformed_payload")
+        return cls._normalize_phrase(payload["phrase"])
+
+    @staticmethod
+    def _normalize_phrase(value: object) -> str:
+        if not isinstance(value, str):
+            raise VoiceError("invalid_wake_phrase")
+        phrase = " ".join(value.strip().lower().split())
+        if not 2 <= len(phrase) <= 64 or not all(
+            character.isalnum() or character in " '-" for character in phrase
+        ):
+            raise VoiceError("invalid_wake_phrase")
+        return phrase
 
     def _append(self, kind: str, **fields: object) -> None:
         self._sequence += 1
@@ -382,10 +491,26 @@ class HermesVoiceBackend:
         self._activate_import_path()
         import_module("hermes_cli.voice").stop_continuous(force_transcribe=False)
 
-    def start_wake(self, *, on_wake) -> None:
+    def start_wake(self, *, on_wake, phrase: str) -> None:
         self._activate_import_path()
         wake_word = import_module("tools.wake_word")
-        wake_word.start_listening(on_wake, owner=self._wake_owner)
+        config = dict(wake_word.load_wake_word_config())
+        config.update(enabled=True, capture="local", phrase=phrase)
+        if phrase == "hey hermes":
+            config.update(provider="openwakeword")
+            config["openwakeword"] = {
+                "model": "hey_hermes",
+                "inference_framework": wake_word.default_inference_framework(),
+            }
+        else:
+            engines = import_module("tools.wake_word_engines")
+            model_root = engines._sherpa_model_root()
+            model_dir = model_root / engines._SHERPA_KWS_MODEL_DIR
+            if not (model_dir / "tokens.txt").is_file():
+                raise RuntimeError("custom wake phrase model is not installed")
+            config.update(provider="sherpa", profile_routing=False)
+            config["sherpa"] = {"model_dir": str(model_dir)}
+        wake_word.start_listening(on_wake, owner=self._wake_owner, config=config)
 
     def stop_wake(self) -> None:
         self._activate_import_path()

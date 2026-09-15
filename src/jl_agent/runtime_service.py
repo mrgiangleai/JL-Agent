@@ -315,6 +315,7 @@ def build_runtime_service(
         turn_runner=HermesTextOnlyTurnRunner(root / "upstream" / "hermes-agent"),
         enabled=voice_enabled_from_environment(),
         activation_approved=voice_activation_approved_from_environment(),
+        wake_phrase_path=paths.root / "wake-phrase.json",
     )
 
     def runtime_status() -> dict[str, object]:
@@ -377,9 +378,7 @@ def _load_consent_verifier(path: Path) -> ConsentSignatureVerifier:
         return UnavailableConsentVerifier()
 
 
-def _consent_enrollment_is_current(
-    path: Path, trusted_fingerprint: str | None
-) -> bool:
+def _consent_enrollment_is_current(path: Path, trusted_fingerprint: str | None) -> bool:
     if trusted_fingerprint is None:
         return False
     try:

@@ -66,10 +66,11 @@ enum NativeContractTests {
     try executeUsesBoundedLongResponseTimeout()
     try voiceControlUsesAuthenticatedBoundedIPC()
     try voiceEventsRejectRawAudioFields()
+    try wakePhraseSettingsUseAuthenticatedTestGate()
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     try missingEnrolledConsentKeyRequiresExplicitRotation()
-    print("15 native contract tests passed")
+    print("16 native contract tests passed")
   }
 
   private static func voiceControlUsesAuthenticatedBoundedIPC() throws {
@@ -118,6 +119,24 @@ enum NativeContractTests {
         callerID: "native-app", sessionID: "session-1"
       )
     }
+  }
+
+  private static func wakePhraseSettingsUseAuthenticatedTestGate() throws {
+    let transport = StubTransport { request in
+      let envelope = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "wake phrase envelope is malformed"
+      )
+      try check(envelope["operation"] as? String == "wake-test-start", "wrong operation")
+      let payload = try require(envelope["payload"] as? [String: Any], "missing payload")
+      try check(payload["phrase"] as? String == "hello jl", "wrong phrase")
+      return try response(
+        for: request, ok: true, result: voiceStatusResult(voiceActive: false), error: nil
+      )
+    }
+    _ = try makeClient(transport: transport).testWakePhrase(
+      "hello jl", callerID: "native-app", sessionID: "session-1"
+    )
   }
 
   private static func voiceStatusResult(voiceActive: Bool) -> [String: Any] {

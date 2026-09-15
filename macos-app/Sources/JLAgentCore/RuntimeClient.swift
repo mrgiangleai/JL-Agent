@@ -139,6 +139,24 @@ public struct JLRuntimeClient: Sendable {
     try voiceControl(operation: "wake-stop", callerID: callerID, sessionID: sessionID)
   }
 
+  public func testWakePhrase(
+    _ phrase: String, callerID: String, sessionID: String
+  ) throws -> VoiceStatus {
+    try voiceControl(
+      operation: "wake-test-start", payload: ["phrase": .string(phrase)],
+      callerID: callerID, sessionID: sessionID
+    )
+  }
+
+  public func setWakePhrase(
+    _ phrase: String, callerID: String, sessionID: String
+  ) throws -> VoiceStatus {
+    try voiceControl(
+      operation: "wake-phrase-set", payload: ["phrase": .string(phrase)],
+      callerID: callerID, sessionID: sessionID
+    )
+  }
+
   public func voiceEvents(
     callerID: String,
     sessionID: String,
@@ -262,12 +280,13 @@ public struct JLRuntimeClient: Sendable {
 
   private func voiceControl(
     operation: String,
+    payload: [String: JSONValue] = [:],
     callerID: String,
     sessionID: String
   ) throws -> VoiceStatus {
     let result = try authenticatedRequest(
       operation: operation,
-      payload: [:],
+      payload: payload,
       callerID: callerID,
       sessionID: sessionID
     )

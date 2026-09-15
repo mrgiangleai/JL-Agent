@@ -58,9 +58,7 @@ _LEGAL_TRANSITIONS: dict[RequestState, frozenset[RequestState]] = {
     RequestState.APPROVED: frozenset(
         {RequestState.PREPARED, RequestState.DENIED, RequestState.FAILED}
     ),
-    RequestState.PREPARED: frozenset(
-        {RequestState.EXECUTING, RequestState.DENIED}
-    ),
+    RequestState.PREPARED: frozenset({RequestState.EXECUTING, RequestState.DENIED}),
     RequestState.EXECUTING: frozenset(
         {RequestState.COMPLETED, RequestState.DENIED, RequestState.FAILED}
     ),
@@ -92,9 +90,7 @@ class RequestLifecycle:
 RequestDecoder = Callable[[IPCRequestEnvelope], ControlRequest]
 StatusProvider = Callable[[], Mapping[str, Any]]
 ActivityReader = Callable[[int], tuple[Mapping[str, Any], ...]]
-VoiceHandler = Callable[
-    [str, Mapping[str, Any], str, str], Mapping[str, object]
-]
+VoiceHandler = Callable[[str, Mapping[str, Any], str, str], Mapping[str, object]]
 
 
 class SecureControlRequestHandler:
@@ -155,9 +151,7 @@ class SecureControlRequestHandler:
             except (OSError, TypeError, ValueError):
                 lifecycle.transition(RequestState.FAILED)
                 return self._failure(envelope, lifecycle, "activity_unavailable")
-            return IPCResponseEnvelope.success(
-                envelope.request_id, {"events": events}
-            )
+            return IPCResponseEnvelope.success(envelope.request_id, {"events": events})
         if envelope.operation in {
             "voice-status",
             "voice-start",
@@ -165,6 +159,8 @@ class SecureControlRequestHandler:
             "voice-events",
             "wake-start",
             "wake-stop",
+            "wake-test-start",
+            "wake-phrase-set",
         }:
             if self.voice_handler is None:
                 lifecycle.transition(RequestState.FAILED)
@@ -183,9 +179,7 @@ class SecureControlRequestHandler:
 
                 lifecycle.transition(RequestState.FAILED)
                 code = (
-                    error.code
-                    if isinstance(error, VoiceError)
-                    else "voice_unavailable"
+                    error.code if isinstance(error, VoiceError) else "voice_unavailable"
                 )
                 return self._failure(envelope, lifecycle, code)
             return IPCResponseEnvelope.success(envelope.request_id, result)
@@ -280,10 +274,7 @@ class SecureControlRequestHandler:
 
         lifecycle.transition(RequestState.AWAITING_APPROVAL)
         if approval_id is None:
-            if (
-                self.consent_coordinator is not None
-                and execution_context is not None
-            ):
+            if self.consent_coordinator is not None and execution_context is not None:
                 try:
                     pending = self.consent_coordinator.register(
                         request_id=envelope.request_id,
@@ -294,16 +285,12 @@ class SecureControlRequestHandler:
                     )
                 except (RuntimeError, ValueError):
                     lifecycle.transition(RequestState.DENIED)
-                    return self._failure(
-                        envelope, lifecycle, "consent_unavailable"
-                    )
+                    return self._failure(envelope, lifecycle, "consent_unavailable")
                 return IPCResponseEnvelope.success(
                     envelope.request_id,
                     {
                         "state": lifecycle.state.value,
-                        "history": [
-                            state.value for state in lifecycle.history
-                        ],
+                        "history": [state.value for state in lifecycle.history],
                         "consent": pending.presentation(
                             now=self.consent_coordinator.now()
                         ),

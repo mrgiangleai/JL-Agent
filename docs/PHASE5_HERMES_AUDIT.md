@@ -46,12 +46,16 @@ boundary.
 3. Transcript callbacks run a Hermes text-only turn. Responses may be spoken by
    Hermes, but tools are structurally disabled for this Phase.
 4. Authenticated protocol-v1 operations are limited to `voice-status`,
-   `voice-start`, `voice-stop`, `voice-events`, `wake-start`, and `wake-stop`.
+   `voice-start`, `voice-stop`, `voice-events`, `wake-start`, `wake-stop`,
+   `wake-test-start`, and `wake-phrase-set`.
    Unknown payload fields fail closed; transcript/reply events are visible only
    to the owning caller/session. Raw PCM/audio and voice content never enter the
    security audit ledger.
 5. The native app remains an IPC client. It never imports Hermes, captures PCM,
    invokes a tool, modifies TCC, or owns microphone permission.
+6. Settings tests a candidate phrase before promotion. Custom phrases reuse
+   Hermes' Sherpa KWS path and fail closed when its optional local model is
+   absent; no implicit model download occurs. Manual **Call JL** bypasses wake.
 
 ## Deferred live boundary
 
