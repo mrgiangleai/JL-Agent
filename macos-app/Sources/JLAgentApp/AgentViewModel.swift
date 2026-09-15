@@ -217,7 +217,7 @@ final class AgentViewModel: ObservableObject {
         try client.voiceStatus(callerID: callerID, sessionID: sessionID)
       }.value
       voiceStatus = status
-      if wakePhraseDraft.isEmpty { wakePhraseDraft = status.wake.phrase ?? "hey hermes" }
+      if wakePhraseDraft.isEmpty { wakePhraseDraft = status.wake.phrase ?? "hey j l" }
       voiceMessage = Self.voiceSummary(status)
       if status.ownedByCurrentSession {
         voiceEvents = try await Task.detached {

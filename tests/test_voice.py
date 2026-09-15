@@ -10,6 +10,7 @@ from typing import cast
 from unittest.mock import patch
 
 from jl_agent.control.voice import (
+    DEFAULT_WAKE_PHRASE,
     HermesTextOnlyTurnRunner,
     HermesVoiceBackend,
     VoiceCoordinator,
@@ -101,6 +102,13 @@ class VoiceCoordinatorTests(unittest.TestCase):
         with self.assertRaisesRegex(VoiceError, "voice_activation_not_approved"):
             gated.start_voice("caller", "session")
         self.assertEqual(self.backend.voice_starts, 0)
+
+    def test_default_wake_phrase_is_the_live_verified_candidate(self) -> None:
+        status = self.voice.status("caller", "session")
+        wake_status = cast(dict[str, object], status["wake"])
+
+        self.assertEqual(DEFAULT_WAKE_PHRASE, "hey j l")
+        self.assertEqual(wake_status["phrase"], DEFAULT_WAKE_PHRASE)
 
     def test_transcript_runs_a_text_only_turn_and_speaks_reply(self) -> None:
         self.voice.start_voice("caller", "session")

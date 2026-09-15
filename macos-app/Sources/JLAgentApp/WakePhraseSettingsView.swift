@@ -6,7 +6,7 @@ struct WakePhraseSettingsView: View {
   var body: some View {
     Form {
       Section("Voice") {
-        Text("Default wake phrase: \(viewModel.voiceStatus?.wake.phrase ?? "hey hermes")")
+        Text("Default wake phrase: \(viewModel.voiceStatus?.wake.phrase ?? "hey j l")")
         TextField("Wake phrase", text: $viewModel.wakePhraseDraft)
         Text(viewModel.wakePhraseMessage)
           .font(.caption)

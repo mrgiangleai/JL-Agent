@@ -188,6 +188,8 @@ written to JL's audit ledger. A separate activation gate prevents any live
 microphone or first-use dependency/model path until explicitly approved.
 The manual **Call JL** path starts voice without wake detection. JL persists a
 candidate wake phrase only after a session-bound Hermes detection test passes.
+The Phase 5 live-verified fallback default is `hey j l` and routes through
+Hermes' Sherpa KWS engine.
 
 ## External component rule
 

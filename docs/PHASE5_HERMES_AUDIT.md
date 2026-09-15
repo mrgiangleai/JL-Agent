@@ -57,15 +57,13 @@ boundary.
    Hermes' Sherpa KWS path and fail closed when its optional local model is
    absent; no implicit model download occurs. Manual **Call JL** bypasses wake.
 
-## Deferred live boundary
+## Pre-live boundary
 
-Hermes' optional voice packages are not JL dependencies and are not installed
-by this milestone. Some providers can lazy-install packages or fetch models at
-first activation. Therefore no start operation or live microphone test may run
-until the user separately approves the exact dependency/model action and macOS
-Microphone permission step. Cloud STT/TTS, paid calls, alternate wake models,
-full-duplex streaming, LaunchAgent startup, and voice-driven tool execution are
-out of scope.
+Hermes' optional voice packages are not JL's default application dependencies.
+Dependency/model installation and each macOS Microphone step were therefore
+held behind separate user approvals. Cloud STT/TTS, paid calls, full-duplex
+streaming, LaunchAgent startup, and voice-driven tool execution remained out of
+scope. The final approved local smoke evidence is recorded below.
 
 ## Approved local model setup
 
@@ -87,8 +85,8 @@ an audio device:
   `hey_hermes` label.
 
 Runtime composition sets `HF_HOME` to the project-local model root before any
-Hermes voice imports. Live microphone activation and macOS Microphone TCC remain
-unattempted and require a separate approval.
+Hermes voice imports. This setup was completed before any approved live
+microphone activation.
 
 ## Sherpa custom wake candidate
 
@@ -100,10 +98,11 @@ official archive provenance plus the exact size and SHA-256 of all five runtime
 assets in `config/models/sherpa-gigaspeech-kws-fp32.json`; the adapter verifies
 every asset before it delegates engine construction to Hermes.
 
-Settings is prefilled with the candidate `HEY J L`, but the persisted default
-remains unchanged until the existing authenticated test-before-default gate
-passes. Manual **Call JL** remains independent of wake detection, and voice
-turns continue to pass an explicit empty toolset.
+Settings is prefilled with `HEY J L`. The phrase remained a candidate until it
+passed both the authenticated test-before-default gate and the final bounded
+live smoke. It is now JL's fallback default. Manual **Call JL** remains
+independent of wake detection, and voice turns continue to pass an explicit
+empty toolset.
 
 Deterministic engine construction exposed an upstream dependency defect:
 Sherpa 1.13.4's `text2token` imports `pypinyin` even for English-only BPE, while
@@ -115,3 +114,26 @@ After that wheel was verified and installed, offline construction passed for
 the FP32 `KeywordSpotter` and its stream. The generated entry for the candidate
 is `▁HE Y ▁ J ▁ L @HEY_J_L`. Construction did not call Hermes' listener or open
 an audio device.
+
+## Accepted final live proof
+
+After explicit temporary Microphone approval for Codex, exactly one final
+bounded smoke ran with no automatic retry:
+
+`HEY J L -> wake -> voice capture -> local STT -> response -> TTS playback`
+
+All five stages passed. The local transcript contained 11 characters and the
+Hermes macOS `say` command adapter rendered and played 109,506 bytes of audio.
+The short response was deterministic, so this test made no provider or paid
+call. `tool_execution_enabled` was `false` throughout.
+
+The macOS `/usr/bin/say` adapter required an explicit WAVE/PCM format because
+the default voice could not infer an output data format. JL now supplies
+`--file-format=WAVE --data-format=LEI16@22050` through Hermes' existing command
+TTS provider; Hermes remains the TTS engine owner.
+
+The temporary development TCC grant belongs to the Codex-responsible Python
+accessor and is not the production trust boundary. The prepared
+`com.jlagent.voice-runtime` host remains intact, fail-closed, and awaiting an
+eligible Apple Development or Developer ID signing identity before production
+Microphone enrollment.

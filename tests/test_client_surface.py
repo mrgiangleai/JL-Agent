@@ -161,8 +161,13 @@ class NativeClientSurfaceTests(unittest.TestCase):
         app_root = ROOT / "macos-app" / "Sources" / "JLAgentApp"
         view_model = (app_root / "AgentViewModel.swift").read_text(encoding="utf-8")
         content = (app_root / "ContentView.swift").read_text(encoding="utf-8")
+        settings = (app_root / "WakePhraseSettingsView.swift").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn('wakePhraseDraft = "HEY J L"', view_model)
+        self.assertIn('status.wake.phrase ?? "hey j l"', view_model)
+        self.assertIn('voiceStatus?.wake.phrase ?? "hey j l"', settings)
         self.assertIn('Button("Call JL")', content)
 
 

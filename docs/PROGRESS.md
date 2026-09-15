@@ -4,8 +4,8 @@ Last updated: 2026-09-15 ICT
 
 ## Phase 5 current state
 
-- Phase 5 implementation and local model setup are complete through the
-  pre-microphone gate.
+- Phase 5 is complete for the approved local-development scope. The final
+  bounded live chain passed once with no automatic retry.
 - The pinned Hermes voice, VAD/STT/TTS, wake-word, ownership, pause/resume,
   bundled-model, and diagnostics surfaces were audited before coding.
 - The minimal JL boundary is fixed: off by default, separately activation-gated,
@@ -19,20 +19,21 @@ Last updated: 2026-09-15 ICT
 - Voice Settings enforces test-before-default for wake phrases. Manual **Call
   JL** remains available independently of wake detection, and custom phrases
   never trigger an implicit model download.
-- The `HEY J L` Sherpa candidate is prefilled but is not the default. JL now
-  owns the official FP32 GigaSpeech KWS cache and verifies the pinned size and
-  SHA-256 of all five runtime assets before delegating to Hermes.
+- `HEY J L` passed the wake-phrase gate and final live smoke and is now JL's
+  fallback default. JL owns the official FP32 GigaSpeech KWS cache and verifies
+  the pinned size and SHA-256 of all five runtime assets before delegating to
+  Hermes.
 - Upstream `sherpa_onnx.text2token` imports undeclared `pypinyin` even for
   English BPE. The separately approved and hash-verified
   `pypinyin==0.55.0` compatibility wheel is now installed; offline FP32 Sherpa
   engine and stream construction pass for `HEY J L` without opening audio.
-- Deterministic coordinator and IPC contract tests were written first. All 117
-  backend and 15 native contract tests pass; release SwiftUI build, Ruff, ty,
-  pip check, Swift format, and diff checks pass.
-- The approved minimal pinned dependencies, Faster-Whisper `base`, and only the
-  required openWakeWord auxiliary assets are installed inside the project.
-  Offline model construction passes. No provider/live audio call was made and
-  Microphone TCC was not requested.
+- Deterministic coordinator and IPC contract tests were written first. Final
+  validation passed 126 backend tests, 16 native contract tests, the release
+  app build, Ruff, ty, dependency/import, model-integrity, and diff checks.
+- The approved minimal pinned dependencies, Faster-Whisper `base`, and the
+  required wake assets are installed inside the project. Offline model
+  construction passes. The accepted final smoke used only local models and a
+  deterministic response; it made no provider or paid call.
 - The pre-microphone audit rejected the generic Python runtime as a TCC target.
   A separate inert `com.jlagent.voice-runtime` host and fail-closed signing
   workflow are prepared with Hardened Runtime, an audio-input entitlement, and
@@ -52,6 +53,10 @@ Last updated: 2026-09-15 ICT
   longer reported silent input. The local TFLite wake listener reached ready,
   but did not detect the wake phrase within 45 seconds, so voice/STT did not
   start. Tool execution remained disabled and no provider call occurred.
+- After the separately approved Sherpa setup and macOS `say` format fix, one
+  final bounded attempt passed `HEY J L` wake, capture, local STT, deterministic
+  response, and TTS playback. The transcript contained 11 characters, TTS
+  rendered 109,506 bytes, and `tool_execution_enabled` was `false`.
 - Detailed evidence: `docs/PHASE5_HERMES_AUDIT.md`.
 
 ## Phase 5 sequential status
@@ -61,12 +66,12 @@ Last updated: 2026-09-15 ICT
 | 1 — Hermes audit | COMPLETE | Pinned capture/VAD/STT/TTS/wake/ownership/model surfaces recorded; no duplicate engine. |
 | 2 — JL voice boundary | COMPLETE | Two activation gates, one caller/session lease, bounded events, and graceful release. |
 | 3 — Tool-free turn | COMPLETE | Hermes text turn receives explicit `toolsets=[]`; deterministic assertion passes. |
-| 4 — Authenticated IPC | COMPLETE | Six strict protocol-v1 operations; malformed/cross-session requests fail closed. |
+| 4 — Authenticated IPC | COMPLETE | Eight strict protocol-v1 operations; malformed/cross-session requests fail closed. |
 | 5 — Native client | COMPLETE | Settings enforces wake test-before-default; manual Call JL remains independent of wake; no native capture. |
-| 6 — Deterministic validation | COMPLETE | 117 backend tests, 15 native tests, release build, lint/type/dependency/format/diff checks pass. |
+| 6 — Deterministic validation | COMPLETE | Coordinator, IPC, model-integrity, tool-disable, native-surface, and macOS TTS adapter checks pass. |
 | 7 — Dependency/model setup | COMPLETE | Exact pinned packages plus one local multilingual STT model and minimum wake assets; offline loads pass. |
 | 8 — Stable voice host signing | BLOCKED ON JL APPLE IDENTITY | Repo setup rejects ad-hoc signing; `security find-identity` reports zero valid identities. |
-| 9 — Microphone/TCC/live audio | PARTIAL — WAKE NOT DETECTED | TCC now allows the Codex-responsible Python accessor and live input is non-silent; wake reached ready but did not fire, so voice/STT remains unproven. |
+| 9 — Microphone/TCC/live audio | COMPLETE FOR APPROVED DEVELOPMENT SCOPE | One bounded attempt passed wake, capture, local STT, deterministic response, and TTS playback; no retry, provider call, or voice tool execution. Production signed-host TCC remains deferred. |
 
 ## Phase 4C completed state
 
@@ -253,7 +258,6 @@ Secret, pin/submodule, Git sync, and artifact checks passed. The approximately
 
 ## Next action
 
-Phase 5 implementation is in progress under the approved minimal boundary. Do
-not repeat the accepted computer-use smoke. Do not install/download voice
-dependencies or models, request Microphone TCC, enable voice-driven tools, or
-run live audio without a separate explicit approval.
+Phase 5 is closed. Do not repeat the accepted voice or computer-use smokes and
+do not enable voice-driven tools. Do not begin Phase 6 without a new explicit
+brief.

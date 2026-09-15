@@ -83,6 +83,7 @@ class _TTSConfigModule(Protocol):
 
 RunAsync = Callable[[Callable[[], None]], None]
 _TTS_CONFIG_LOCK = threading.RLock()
+DEFAULT_WAKE_PHRASE = "hey j l"
 
 
 def macos_say_tts_config() -> dict[str, object]:
@@ -461,7 +462,7 @@ class VoiceCoordinator:
 
     def _load_wake_phrase(self) -> str:
         if self._wake_phrase_path is None:
-            return "hey hermes"
+            return DEFAULT_WAKE_PHRASE
         try:
             details = self._wake_phrase_path.lstat()
             if (
@@ -469,11 +470,11 @@ class VoiceCoordinator:
                 or details.st_uid != os.geteuid()
                 or details.st_size > 1024
             ):
-                return "hey hermes"
+                return DEFAULT_WAKE_PHRASE
             value = json.loads(self._wake_phrase_path.read_text(encoding="utf-8"))
             return self._normalize_phrase(value["phrase"])
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-            return "hey hermes"
+            return DEFAULT_WAKE_PHRASE
 
     def _save_wake_phrase(self, phrase: str) -> None:
         if self._wake_phrase_path is None:
