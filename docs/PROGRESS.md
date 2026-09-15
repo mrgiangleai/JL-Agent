@@ -37,6 +37,11 @@ Last updated: 2026-09-14 ICT
   near-zero samples; TCC recorded `authValue=0` for responsible process
   `com.openai.codex`. No wake detection, voice capture, transcription, provider
   call, or tool execution occurred.
+- After Codex microphone access was enabled, a bounded retest confirmed
+  `authValue=2` for the Codex-responsible Python accessor and the stream no
+  longer reported silent input. The local TFLite wake listener reached ready,
+  but did not detect the wake phrase within 45 seconds, so voice/STT did not
+  start. Tool execution remained disabled and no provider call occurred.
 - Detailed evidence: `docs/PHASE5_HERMES_AUDIT.md`.
 
 ## Phase 5 sequential status
@@ -51,7 +56,7 @@ Last updated: 2026-09-14 ICT
 | 6 — Deterministic validation | COMPLETE | 117 backend tests, 15 native tests, release build, lint/type/dependency/format/diff checks pass. |
 | 7 — Dependency/model setup | COMPLETE | Exact pinned packages plus one local multilingual STT model and minimum wake assets; offline loads pass. |
 | 8 — Stable voice host signing | BLOCKED ON JL APPLE IDENTITY | Repo setup rejects ad-hoc signing; `security find-identity` reports zero valid identities. |
-| 9 — Microphone/TCC/live audio | BLOCKED ON TCC DENIAL | The approved bounded Codex-hosted attempt opened the stream but received silence; TCC recorded `authValue=0`, with no wake/transcript/provider call. |
+| 9 — Microphone/TCC/live audio | PARTIAL — WAKE NOT DETECTED | TCC now allows the Codex-responsible Python accessor and live input is non-silent; wake reached ready but did not fire, so voice/STT remains unproven. |
 
 ## Phase 4C completed state
 
