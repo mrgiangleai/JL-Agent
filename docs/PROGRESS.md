@@ -22,9 +22,10 @@ Last updated: 2026-09-15 ICT
 - The `HEY J L` Sherpa candidate is prefilled but is not the default. JL now
   owns the official FP32 GigaSpeech KWS cache and verifies the pinned size and
   SHA-256 of all five runtime assets before delegating to Hermes.
-- Offline Hermes Sherpa construction currently fails closed because upstream
-  `sherpa_onnx.text2token` imports undeclared `pypinyin` even for English BPE.
-  No dependency outside Hermes' approved pin set was installed.
+- Upstream `sherpa_onnx.text2token` imports undeclared `pypinyin` even for
+  English BPE. The separately approved and hash-verified
+  `pypinyin==0.55.0` compatibility wheel is now installed; offline FP32 Sherpa
+  engine and stream construction pass for `HEY J L` without opening audio.
 - Deterministic coordinator and IPC contract tests were written first. All 117
   backend and 15 native contract tests pass; release SwiftUI build, Ruff, ty,
   pip check, Swift format, and diff checks pass.

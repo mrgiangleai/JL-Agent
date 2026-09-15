@@ -107,8 +107,11 @@ turns continue to pass an explicit empty toolset.
 
 Deterministic engine construction exposed an upstream dependency defect:
 Sherpa 1.13.4's `text2token` imports `pypinyin` even for English-only BPE, while
-Hermes' `wake.sherpa` pin set does not include `pypinyin`. JL does not install an
-unapproved extra dependency or replace Hermes' tokenizer. Model integrity and
-tokenization through the already-pinned `sentencepiece` package can be checked
-offline, but full Hermes Sherpa construction remains fail-closed until this
-dependency decision is approved.
+Hermes' `wake.sherpa` pin set does not include it. The separately approved
+compatibility dependency is exactly `pypinyin==0.55.0`; its source wheel size
+and SHA-256 are pinned beside the model manifest. No other package was added.
+
+After that wheel was verified and installed, offline construction passed for
+the FP32 `KeywordSpotter` and its stream. The generated entry for the candidate
+is `▁HE Y ▁ J ▁ L @HEY_J_L`. Construction did not call Hermes' listener or open
+an audio device.

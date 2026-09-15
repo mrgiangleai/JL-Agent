@@ -6,6 +6,16 @@
     "size": 17626723,
     "sha256": "f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a"
   },
+  "compatibility_dependencies": [
+    {
+      "name": "pypinyin",
+      "version": "0.55.0",
+      "filename": "pypinyin-0.55.0-py2.py3-none-any.whl",
+      "size": 840203,
+      "sha256": "d53b1e8ad2cdb815fb2cb604ed3123372f5a28c6f447571244aca36fc62a286f",
+      "reason": "sherpa_onnx.text2token imports pypinyin for English BPE"
+    }
+  ],
   "runtime_assets": [
     {
       "path": "bpe.model",
