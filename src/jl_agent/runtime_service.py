@@ -311,6 +311,9 @@ def build_runtime_service(
         backend=HermesVoiceBackend(
             root / "upstream" / "hermes-agent",
             model_cache_root=root / ".jl-agent" / "models",
+            sherpa_manifest_path=(
+                root / "config" / "models" / "sherpa-gigaspeech-kws-fp32.json"
+            ),
         ),
         turn_runner=HermesTextOnlyTurnRunner(root / "upstream" / "hermes-agent"),
         enabled=voice_enabled_from_environment(),

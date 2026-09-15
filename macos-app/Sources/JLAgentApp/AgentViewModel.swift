@@ -23,7 +23,7 @@ final class AgentViewModel: ObservableObject {
   @Published var voiceStatus: VoiceStatus?
   @Published var voiceEvents: [VoiceEvent] = []
   @Published var voiceMessage = "Voice is off by default."
-  @Published var wakePhraseDraft = ""
+  @Published var wakePhraseDraft = "HEY J L"
   @Published var testedWakePhrase: String?
   @Published var wakePhraseMessage = "Test a phrase before making it the default."
   @Published var runtimePID: Int?

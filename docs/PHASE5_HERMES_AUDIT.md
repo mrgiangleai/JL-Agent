@@ -89,3 +89,26 @@ an audio device:
 Runtime composition sets `HF_HOME` to the project-local model root before any
 Hermes voice imports. Live microphone activation and macOS Microphone TCC remain
 unattempted and require a separate approval.
+
+## Sherpa custom wake candidate
+
+The approved English custom-wake setup uses Hermes' pinned
+`sherpa-onnx==1.13.4`, `sentencepiece==0.2.2`, `sounddevice==0.5.5`, and
+`numpy==2.4.3`. The official FP32 GigaSpeech KWS runtime subset is stored only
+under the ignored project-local `.jl-agent/models/sherpa/` cache. JL pins the
+official archive provenance plus the exact size and SHA-256 of all five runtime
+assets in `config/models/sherpa-gigaspeech-kws-fp32.json`; the adapter verifies
+every asset before it delegates engine construction to Hermes.
+
+Settings is prefilled with the candidate `HEY J L`, but the persisted default
+remains unchanged until the existing authenticated test-before-default gate
+passes. Manual **Call JL** remains independent of wake detection, and voice
+turns continue to pass an explicit empty toolset.
+
+Deterministic engine construction exposed an upstream dependency defect:
+Sherpa 1.13.4's `text2token` imports `pypinyin` even for English-only BPE, while
+Hermes' `wake.sherpa` pin set does not include `pypinyin`. JL does not install an
+unapproved extra dependency or replace Hermes' tokenizer. Model integrity and
+tokenization through the already-pinned `sentencepiece` package can be checked
+offline, but full Hermes Sherpa construction remains fail-closed until this
+dependency decision is approved.

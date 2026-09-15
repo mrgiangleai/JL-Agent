@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -12,6 +13,41 @@ from collections.abc import Callable, Mapping
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Protocol, cast
+
+
+def verify_sherpa_model_assets(
+    model_dir: Path, manifest_path: Path, expected_model: str
+) -> None:
+    """Fail closed unless every JL-pinned Sherpa runtime asset matches."""
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if (
+            manifest.get("schema_version") != 1
+            or manifest.get("model") != expected_model
+        ):
+            raise ValueError("unexpected manifest")
+        assets = manifest["runtime_assets"]
+        if not isinstance(assets, list) or not assets:
+            raise ValueError("missing runtime assets")
+        for asset in assets:
+            relative = asset["path"]
+            if not isinstance(relative, str) or Path(relative).name != relative:
+                raise ValueError("invalid asset path")
+            path = model_dir / relative
+            details = path.lstat()
+            if not stat.S_ISREG(details.st_mode) or details.st_uid != os.geteuid():
+                raise ValueError("untrusted asset")
+            if details.st_size != asset["size"]:
+                raise ValueError("asset size mismatch")
+            digest = hashlib.sha256()
+            with path.open("rb") as source:
+                for block in iter(lambda: source.read(1024 * 1024), b""):
+                    digest.update(block)
+            if digest.hexdigest() != asset["sha256"]:
+                raise ValueError("asset digest mismatch")
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise RuntimeError("custom wake phrase model integrity check failed") from error
 
 
 class VoiceError(RuntimeError):
@@ -459,8 +495,11 @@ class HermesVoiceBackend:
         hermes_root: Path,
         *,
         model_cache_root: Path | None = None,
+        sherpa_manifest_path: Path | None = None,
     ) -> None:
         self.hermes_root = hermes_root
+        self._model_cache_root = model_cache_root
+        self._sherpa_manifest_path = sherpa_manifest_path
         self._wake_owner = object()
         if model_cache_root is not None:
             os.environ.setdefault(
@@ -504,10 +543,16 @@ class HermesVoiceBackend:
             }
         else:
             engines = import_module("tools.wake_word_engines")
-            model_root = engines._sherpa_model_root()
-            model_dir = model_root / engines._SHERPA_KWS_MODEL_DIR
-            if not (model_dir / "tokens.txt").is_file():
+            if self._model_cache_root is None or self._sherpa_manifest_path is None:
                 raise RuntimeError("custom wake phrase model is not installed")
+            model_dir = (
+                self._model_cache_root / "sherpa" / engines._SHERPA_KWS_MODEL_DIR
+            )
+            verify_sherpa_model_assets(
+                model_dir,
+                self._sherpa_manifest_path,
+                engines._SHERPA_KWS_MODEL_DIR,
+            )
             config.update(provider="sherpa", profile_routing=False)
             config["sherpa"] = {"model_dir": str(model_dir)}
         wake_word.start_listening(on_wake, owner=self._wake_owner, config=config)

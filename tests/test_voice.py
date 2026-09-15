@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import tempfile
 import unittest
 from types import ModuleType
+from typing import cast
 from unittest.mock import patch
 
 from jl_agent.control.voice import (
@@ -11,6 +14,7 @@ from jl_agent.control.voice import (
     HermesVoiceBackend,
     VoiceCoordinator,
     VoiceError,
+    verify_sherpa_model_assets,
 )
 
 
@@ -152,7 +156,8 @@ class VoiceCoordinatorTests(unittest.TestCase):
             self.backend.wake_callback()
             status = voice.set_wake_phrase("caller", "session", "hello jl")
 
-            self.assertEqual(status["wake"]["phrase"], "hello jl")
+            wake_status = cast(dict[str, object], status["wake"])
+            self.assertEqual(wake_status["phrase"], "hello jl")
             self.assertEqual(
                 __import__("json").loads(store.read_text())["phrase"], "hello jl"
             )
@@ -220,6 +225,38 @@ class VoiceCoordinatorTests(unittest.TestCase):
                     os.environ.pop("HF_HOME", None)
                 else:
                     os.environ["HF_HOME"] = previous
+
+    def test_sherpa_assets_must_match_jl_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = __import__("pathlib").Path(temporary)
+            model = root / "model"
+            model.mkdir()
+            asset = model / "tokens.txt"
+            asset.write_bytes(b"pinned tokens")
+            manifest = root / "manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "model": "test-model",
+                        "runtime_assets": [
+                            {
+                                "path": "tokens.txt",
+                                "size": asset.stat().st_size,
+                                "sha256": hashlib.sha256(
+                                    asset.read_bytes()
+                                ).hexdigest(),
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            verify_sherpa_model_assets(model, manifest, "test-model")
+            asset.write_bytes(b"tampered")
+            with self.assertRaisesRegex(RuntimeError, "integrity check failed"):
+                verify_sherpa_model_assets(model, manifest, "test-model")
 
 
 if __name__ == "__main__":

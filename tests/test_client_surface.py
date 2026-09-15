@@ -157,6 +157,14 @@ class NativeClientSurfaceTests(unittest.TestCase):
         ):
             self.assertNotIn(live_audio_marker, host_source)
 
+    def test_voice_keeps_manual_fallback_and_uses_sherpa_candidate(self) -> None:
+        app_root = ROOT / "macos-app" / "Sources" / "JLAgentApp"
+        view_model = (app_root / "AgentViewModel.swift").read_text(encoding="utf-8")
+        content = (app_root / "ContentView.swift").read_text(encoding="utf-8")
+
+        self.assertIn('wakePhraseDraft = "HEY J L"', view_model)
+        self.assertIn('Button("Call JL")', content)
+
 
 if __name__ == "__main__":
     unittest.main()

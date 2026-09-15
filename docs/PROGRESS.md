@@ -1,6 +1,6 @@
 # Phase 5 progress
 
-Last updated: 2026-09-14 ICT
+Last updated: 2026-09-15 ICT
 
 ## Phase 5 current state
 
@@ -19,6 +19,12 @@ Last updated: 2026-09-14 ICT
 - Voice Settings enforces test-before-default for wake phrases. Manual **Call
   JL** remains available independently of wake detection, and custom phrases
   never trigger an implicit model download.
+- The `HEY J L` Sherpa candidate is prefilled but is not the default. JL now
+  owns the official FP32 GigaSpeech KWS cache and verifies the pinned size and
+  SHA-256 of all five runtime assets before delegating to Hermes.
+- Offline Hermes Sherpa construction currently fails closed because upstream
+  `sherpa_onnx.text2token` imports undeclared `pypinyin` even for English BPE.
+  No dependency outside Hermes' approved pin set was installed.
 - Deterministic coordinator and IPC contract tests were written first. All 117
   backend and 15 native contract tests pass; release SwiftUI build, Ruff, ty,
   pip check, Swift format, and diff checks pass.

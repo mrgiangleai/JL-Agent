@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "model": "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01",
+  "source_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2",
+  "archive": {
+    "size": 17626723,
+    "sha256": "f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a"
+  },
+  "runtime_assets": [
+    {
+      "path": "bpe.model",
+      "size": 244837,
+      "sha256": "c8a2a0129c4ab8e463164c142f82d25649661b122c8cd0b7aab5c9e80b90ad24"
+    },
+    {
+      "path": "decoder-epoch-12-avg-2-chunk-16-left-64.onnx",
+      "size": 1063189,
+      "sha256": "f61ebd3eed3773a44d088d53dfae92dbb6aec4839f4dcaee2d402414741663a3"
+    },
+    {
+      "path": "encoder-epoch-12-avg-2-chunk-16-left-64.onnx",
+      "size": 12174219,
+      "sha256": "063fbc1aeae8a9b574607a331a00e60371846ef9eaa3c1d9ea48176665dfc693"
+    },
+    {
+      "path": "joiner-epoch-12-avg-2-chunk-16-left-64.onnx",
+      "size": 642462,
+      "sha256": "0d7a37e749d8055223029318d6ffae82db1dae2d315d0892a68ba5dad17c1d2d"
+    },
+    {
+      "path": "tokens.txt",
+      "size": 5006,
+      "sha256": "fd2ded4050a55d2b1578870ba8697d02371980217806b7558bd0a5cc60f3ba53"
+    }
+  ]
+}
