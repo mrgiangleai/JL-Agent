@@ -1,10 +1,23 @@
 # JL Agent progress
 
-Last updated: 2026-09-16 ICT
+Last updated: 2026-09-17 ICT
+
+## Phase 9 product decision — personal v1 permission/signing boundary
+
+- JL Agent v1 is a personal daily-driver for this Mac and this user account
+  only. Stable Microphone TCC persistence across rebuilds or updates is not
+  required; macOS may request a normal user grant again.
+- JL must not bypass or weaken macOS TCC. Actual voice functionality still
+  requires the JL voice-host path and explicit user-granted Microphone access.
+  Accessibility and Screen Recording remain owned by the official CuaDriver
+  identity.
+- Paid Apple Developer enrollment, stable Apple-issued signing, Developer ID,
+  notarization, and distribution do not block personal v1 unless technical
+  validation proves one is required for actual voice or CuaDriver functionality.
 
 ## Phase 9 Step 1 final checkpoint — personal daily-driver packaging/lifecycle
 
-- Step 1 is complete and stopped; Step 2 has not started. `JL Agent.app` starts or
+- Step 1 is complete and stopped; Step 2 has been checkpointed. `JL Agent.app` starts or
   reconnects to one packaged foreground JL runtime without Terminal or `.venv`
   activation; the app has explicit safe Restart/Stop controls.
 - The bundle contains JL source/configuration, the pinned Hermes runtime subset,
@@ -24,14 +37,15 @@ Last updated: 2026-09-16 ICT
   `CLANG_MODULE_CACHE_PATH`, and `SWIFTPM_MODULECACHE_OVERRIDE`. No live
   voice, Cua, inference, heavy tests, signing enrollment, or TCC changes were
   performed.
-- Unresolved signing/TCC requirement: the keychain has `0 valid identities`;
-  the app is currently ad-hoc signed; production voice use still requires a
-  stable same-team Apple-issued identity for `com.jlagent.control` and
-  `com.jlagent.voice-runtime`. Microphone TCC remains deferred to the signed
-  voice host, and CuaDriver remains the owner of its own TCC grants.
-- Deferred as requested: paid signing, production voice/TCC ownership,
-  notarization, distribution, clean-machine install, auto-update, full
-  rollback/migration, large diagnostics UI, and new capabilities.
+- Deferred stable-signing requirement: the keychain has `0 valid identities` and
+  the app is currently ad-hoc signed. Stable same-team Apple identity and
+  persistent Microphone TCC are not personal-v1 gates. Voice still requires the
+  actual voice host and normal user-granted Microphone TCC, which may need
+  regrant after rebuild; CuaDriver remains the owner of its own TCC grants.
+- Deferred as requested: paid signing, stable TCC persistence, notarization,
+  distribution, clean-machine install, auto-update, full rollback/migration,
+  large diagnostics UI, and new capabilities. Actual voice/CuaDriver
+  functionality remains in Step 6 scope and is not deferred.
 
 ## Phase 9 Step 2 review checkpoint — supported build/sign configuration
 
@@ -41,8 +55,10 @@ Last updated: 2026-09-16 ICT
   `SWIFTPM_MODULECACHE_OVERRIDE` settings.
 - `JL Agent` retains the development-only ad-hoc default. When configured,
   `JL_CODE_SIGN_IDENTITY` must name a valid Apple Development identity.
-  `JL_VOICE_CODE_SIGN_IDENTITY` is required and must name a valid Apple
-  Development identity; the voice script fails closed otherwise.
+- Stable Apple Development signing remains an optional stable-identity path;
+  it is not a personal-v1 product gate. The actual voice-host functionality and
+  CuaDriver readiness path remain in scope for Step 6, with normal user-granted
+  TCC still mandatory.
 - Native contract compilation has a matching `run-native-tests.sh` wrapper so
   its SwiftPM invocation uses the same supported lane. The packaging and
   runtime lifecycle requirements corresponding to sequence Steps 3–4 are
@@ -53,9 +69,9 @@ Last updated: 2026-09-16 ICT
   voice-host script correctly rejected missing signing identity with exit 64.
   Native test execution was not run because its harness mutates temporary
   state and Keychain items outside the project boundary.
-- Step 2 checkpoint is complete. Steps 3–4 are satisfied by Step 1; Steps 5
-  and 7 remain unimplemented. Step 6 remains blocked on the unavailable
-  Apple-issued signing identity.
+- Step 2 checkpoint is complete. Steps 3–4 are satisfied by Step 1. Steps 5
+  and 7 remain unimplemented. Step 6 functionality remains in scope and its
+  stable-signing/distribution portion is deferred unless technically required.
 
 ## Phase 8 current state
 
