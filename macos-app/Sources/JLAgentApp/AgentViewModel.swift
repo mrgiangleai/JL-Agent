@@ -53,6 +53,7 @@ final class AgentViewModel: ObservableObject {
   @Published var migrationStatus = "Not checked"
   @Published var diagnosticMessage = "Diagnostics have not been exported."
   @Published var isWorking = false
+  @Published var companionAnswer: String?
 
   let callerID = "native-macos-app"
   let sessionID = UUID().uuidString.lowercased()
@@ -208,6 +209,7 @@ final class AgentViewModel: ObservableObject {
     pendingAssistantConsent = nil
     pendingAssistantConsentDeadline = nil
     isWorking = true
+    companionAnswer = nil
     assistantState = "sending"
     assistantResultText = "Sending typed assistant request..."
     let client = client
@@ -232,6 +234,8 @@ final class AgentViewModel: ObservableObject {
             expiresInSeconds: challenge.expiresInSeconds
           )
           pendingAssistantConsent = challenge
+        } else {
+          companionAnswer = Self.companionReply(from: response.resultJSON)
         }
         isWorking = false
       } catch {
@@ -253,6 +257,7 @@ final class AgentViewModel: ObservableObject {
     pendingConsent = nil
     pendingConsentDeadline = nil
     isWorking = true
+    companionAnswer = nil
     decision = "Evaluating"
     resultText = "Preparing request…"
     let requestID = UUID().uuidString.lowercased()
@@ -543,6 +548,11 @@ final class AgentViewModel: ObservableObject {
         voiceEvents = try await Task.detached {
           try client.voiceEvents(callerID: callerID, sessionID: sessionID)
         }.value
+        if let reply = voiceEvents.last(where: { $0.kind == "reply" })?.text,
+          !reply.isEmpty
+        {
+          companionAnswer = reply
+        }
         if let passed = voiceEvents.last(where: {
           $0.kind == "wake_phrase_test" && $0.status == "passed"
         })?.text {
@@ -732,6 +742,26 @@ final class AgentViewModel: ObservableObject {
   func startWake() { updateVoice(.startWake) }
   func stopWake() { updateVoice(.stopWake) }
 
+  func toggleVoiceFromCompanion() {
+    if voiceStatus?.voice.active == true {
+      stopVoice()
+      return
+    }
+    companionAnswer = nil
+    if voiceStatus == nil {
+      Task {
+        await refreshVoice()
+        startVoice()
+      }
+    } else {
+      startVoice()
+    }
+  }
+
+  func dismissCompanionAnswer() {
+    companionAnswer = nil
+  }
+
   func testWakePhrase() {
     let phrase = normalizedWakePhrase
     guard !isWorking else { return }
@@ -787,6 +817,7 @@ final class AgentViewModel: ObservableObject {
   private func updateVoice(_ operation: VoiceOperation) {
     guard !isWorking else { return }
     isWorking = true
+    if case .startVoice = operation { companionAnswer = nil }
     let client = client
     let callerID = callerID
     let sessionID = sessionID
@@ -974,6 +1005,7 @@ final class AgentViewModel: ObservableObject {
         )
       }.value
       resultText = result.output ?? "Execution finished: \(result.state)"
+      companionAnswer = result.output
       isWorking = false
       await refreshActivity()
     } catch {
@@ -1057,6 +1089,16 @@ final class AgentViewModel: ObservableObject {
 
   private func display(_ error: Error) -> String {
     (error as? LocalizedError)?.errorDescription ?? "Request failed safely."
+  }
+
+  private static func companionReply(from resultJSON: String) -> String? {
+    guard let data = resultJSON.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return nil }
+    for key in ["reply", "output", "message"] {
+      if let value = object[key] as? String, !value.isEmpty { return value }
+    }
+    return nil
   }
 
   private func assistantErrorState(_ error: Error) -> String {

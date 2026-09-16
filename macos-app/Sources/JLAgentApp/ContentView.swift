@@ -1,3 +1,5 @@
+import AppKit
+import Foundation
 import JLAgentCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -5,64 +7,93 @@ import UniformTypeIdentifiers
 struct ContentView: View {
   @ObservedObject var viewModel: AgentViewModel
   @State private var showingSkillImporter = false
+  @State private var showingAdvanced = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      HStack {
+      HStack(spacing: 10) {
+        Image(systemName: "sparkles")
+          .font(.title3)
+          .foregroundStyle(.tint)
+        Text("JL Agent")
+          .font(.title2.weight(.semibold))
+        Spacer()
         Circle()
           .fill(statusColor)
-          .frame(width: 10, height: 10)
-        Text("JL Agent: \(viewModel.connectionState.rawValue)")
-          .font(.headline)
-        Text(viewModel.runtimeMessage)
+          .frame(width: 8, height: 8)
+        Text(statusLabel)
           .font(.caption)
           .foregroundStyle(.secondary)
-        Spacer()
-        Button("Restart Runtime") { viewModel.restartRuntime() }
-          .disabled(viewModel.isWorking)
-        Button("Stop Runtime") { viewModel.stopRuntime() }
-          .disabled(viewModel.isWorking)
-        Button("Refresh Status") { viewModel.refreshStatus() }
-        Button("Refresh Credential") { viewModel.refreshCredential() }
-        Button("Rotate Consent Key") { viewModel.rotateConsentKey() }
+        Button {
+          NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } label: {
+          Image(systemName: "gearshape")
+        }
+        .buttonStyle(.borderless)
+        .help("Cài đặt")
       }
 
-      Text("Session: \(viewModel.sessionID)")
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
-
-      GroupBox("Ask JL") {
-        VStack(alignment: .leading, spacing: 8) {
-          HStack(alignment: .bottom, spacing: 8) {
-            TextField("Type a request", text: $viewModel.assistantText, axis: .vertical)
-              .textFieldStyle(.roundedBorder)
-              .lineLimit(1...3)
-            Button {
-              viewModel.sendAssistantRequest()
-            } label: {
-              Label("Send", systemImage: "arrow.up.circle.fill")
-            }
-            .keyboardShortcut(.return, modifiers: [.command])
-            .disabled(viewModel.isWorking)
+      VStack(alignment: .leading, spacing: 12) {
+        Text("Bạn cần JL giúp gì?")
+          .font(.title3.weight(.medium))
+        if let reply = assistantReply {
+          Text(reply)
+            .font(.body)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+        } else if viewModel.isWorking {
+          HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("JL đang xử lý…")
+              .foregroundStyle(.secondary)
           }
-          HStack {
-            Text(viewModel.assistantState)
-              .font(.headline)
-            Spacer()
-            if viewModel.isWorking {
-              ProgressView()
-                .controlSize(.small)
-            }
+        } else {
+          Text("Hỏi bằng văn bản hoặc dùng nút microphone trên companion.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+        HStack(alignment: .bottom, spacing: 8) {
+          TextField("Nhắn cho JL…", text: $viewModel.assistantText, axis: .vertical)
+            .textFieldStyle(.roundedBorder)
+            .lineLimit(1...4)
+          Button {
+            viewModel.sendAssistantRequest()
+          } label: {
+            Image(systemName: "arrow.up.circle.fill")
+              .font(.title2)
           }
-          ScrollView {
-            Text(viewModel.assistantResultText)
-              .font(.caption.monospaced())
-              .textSelection(.enabled)
-              .frame(maxWidth: .infinity, alignment: .leading)
-          }
-          .frame(minHeight: 44, maxHeight: 120)
+          .buttonStyle(.borderless)
+          .keyboardShortcut(.return, modifiers: [.command])
+          .disabled(viewModel.isWorking)
+          .help("Gửi")
         }
       }
+      .padding(18)
+      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+
+      DisclosureGroup("Nâng cao", isExpanded: $showingAdvanced) {
+        VStack(alignment: .leading, spacing: 8) {
+          Text("Runtime, permissions, skills, schedules and request details")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          HStack {
+            Text(viewModel.runtimeMessage)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Spacer()
+            Button("Restart") { viewModel.restartRuntime() }
+              .disabled(viewModel.isWorking)
+            Button("Stop") { viewModel.stopRuntime() }
+              .disabled(viewModel.isWorking)
+            Button("Refresh") { viewModel.refreshStatus() }
+          }
+          Text("Session: \(viewModel.sessionID)")
+            .font(.caption2.monospaced())
+            .foregroundStyle(.tertiary)
+        }
+        .padding(.top, 6)
 
       GroupBox("Skills") {
         VStack(alignment: .leading, spacing: 8) {
@@ -386,6 +417,7 @@ struct ContentView: View {
         }
         .frame(minHeight: 130)
       }
+      }
     }
     .padding(16)
     .sheet(item: $viewModel.pendingConsent) { challenge in
@@ -426,6 +458,30 @@ struct ContentView: View {
     case .degraded: .orange
     case .authenticationFailed, .unavailable: .red
     }
+  }
+
+  private var statusLabel: String {
+    switch viewModel.connectionState {
+    case .ready: "Sẵn sàng"
+    case .connecting: "Đang kết nối"
+    case .connected: "Đã kết nối"
+    case .degraded: "Cần kiểm tra"
+    case .authenticationFailed: "Cần xác thực"
+    case .unavailable: "Ngoại tuyến"
+    }
+  }
+
+  private var assistantReply: String? {
+    guard viewModel.assistantState != "sending",
+      viewModel.assistantResultText != "No request sent."
+    else { return nil }
+    guard let data = viewModel.assistantResultText.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return viewModel.assistantResultText }
+    for key in ["reply", "output", "message"] {
+      if let value = object[key] as? String, !value.isEmpty { return value }
+    }
+    return viewModel.assistantResultText
   }
 
   private func permissionLabel(_ kind: String) -> String {

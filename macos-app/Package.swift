@@ -18,7 +18,8 @@ let package = Package(
     ),
     .executableTarget(
       name: "JLAgentApp",
-      dependencies: ["JLAgentCore"]
+      dependencies: ["JLAgentCore"],
+      resources: [.process("Resources")]
     ),
     .executableTarget(name: "JLVoiceRuntime"),
     .executableTarget(

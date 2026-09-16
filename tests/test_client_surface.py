@@ -176,6 +176,38 @@ class NativeClientSurfaceTests(unittest.TestCase):
         self.assertIn('voiceStatus?.wake.phrase ?? "hey j l"', settings)
         self.assertIn('Button("Call JL")', content)
 
+    def test_companion_ui_is_transparent_stateful_and_secondary_to_chat(self) -> None:
+        app_root = ROOT / "macos-app" / "Sources" / "JLAgentApp"
+        companion = (app_root / "CompanionView.swift").read_text(encoding="utf-8")
+        controller = (app_root / "CompanionWindowController.swift").read_text(
+            encoding="utf-8"
+        )
+        app = (app_root / "JLAgentApp.swift").read_text(encoding="utf-8")
+        package = (ROOT / "macos-app" / "Package.swift").read_text(encoding="utf-8")
+
+        for state in (
+            "idle", "listening", "thinking", "working",
+            "success", "attention", "error", "sleeping",
+        ):
+            self.assertIn(state, companion)
+            self.assertTrue(
+                (app_root / "Resources" / "JLCharacter" / f"{state}.png").is_file()
+            )
+        self.assertIn('resources: [.process("Resources")]', package)
+        build_app = (ROOT / "macos-app" / "Scripts" / "build-app.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"$contents/Resources/JLAgent_JLAgentApp.bundle"', build_app)
+        self.assertIn('onTapGesture { react() }', companion)
+        self.assertIn('Timer.publish(every: 1', companion)
+        self.assertIn('Task.sleep(for: .seconds(10))', companion)
+        self.assertIn('styleMask: [.borderless, .nonactivatingPanel]', controller)
+        self.assertIn('panel.backgroundColor = .clear', controller)
+        self.assertIn('panel.isMovableByWindowBackground = true', controller)
+        self.assertIn('SMAppService.mainApp.register()', controller)
+        self.assertIn('MenuBarExtra("JL Agent"', app)
+        self.assertIn('forEach { $0.orderOut(nil) }', controller)
+
 
 if __name__ == "__main__":
     unittest.main()

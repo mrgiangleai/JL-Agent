@@ -22,6 +22,8 @@ contents="$app_dir/Contents"
 mkdir -p "$contents/MacOS" "$contents/Resources"
 cp "$bin_dir/JLAgentApp" "$contents/MacOS/JLAgentApp"
 cp "$app_root/Resources/Info.plist" "$contents/Info.plist"
+rm -rf "$app_dir/JLAgent_JLAgentApp.bundle"
+cp -R "$bin_dir/JLAgent_JLAgentApp.bundle" "$contents/Resources/JLAgent_JLAgentApp.bundle"
 runtime_bundle="$contents/Resources/JLRuntime"
 mkdir -p "$runtime_bundle/src" "$runtime_bundle/config" \
   "$runtime_bundle/upstream/hermes-agent"
