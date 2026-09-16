@@ -4,14 +4,27 @@ This directory contains the Phase 4A native SwiftUI control/consent client.
 It is a client of the Python JL runtime and contains no Hermes runtime,
 provider, tool implementation, or execution bypass.
 
-The project is a dependency-free Swift package so it can be validated with the
-installed Command Line Tools:
+The project is a dependency-free Swift package. The supported build lane uses
+the installed Command Line Tools compiler with the matching `MacOSX15.5.sdk`
+and a project-local SwiftPM/Clang module cache:
 
 ```bash
 cd macos-app
-swift run JLAgentNativeTests
+./Scripts/run-native-tests.sh
 ./Scripts/build-app.sh
 ```
+
+The scripts use these defaults explicitly and fail closed when the SDK is
+missing. Override only the SDK path when a matching toolchain is installed:
+
+```bash
+JL_SWIFT_SDKROOT=/path/to/MacOSX15.5.sdk ./Scripts/build-app.sh
+```
+
+`JL_CODE_SIGN_IDENTITY` is optional for the development app. Without it the
+app is ad-hoc signed; when set, it must name a valid Apple Development
+identity. The voice runtime always requires a valid Apple Development
+identity through `JL_VOICE_CODE_SIGN_IDENTITY`.
 
 The build script creates an ad-hoc-signed development app at
 `macos-app/.build/release/JL Agent.app`. Generated `.build` content is ignored.
@@ -23,9 +36,8 @@ target. Its current executable is deliberately inert: it does not open an
 audio device or request TCC. The build refuses ad-hoc signing so the eventual
 microphone authorization is tied to a stable JL-owned Apple team identity.
 
-Install an eligible Apple Development identity for local development (or a
-Developer ID Application identity for distribution), then build with its exact
-Keychain name:
+Install an eligible Apple Development identity for local development, then
+build with its exact Keychain name:
 
 ```bash
 export JL_VOICE_CODE_SIGN_IDENTITY="Apple Development: Example (TEAMID)"

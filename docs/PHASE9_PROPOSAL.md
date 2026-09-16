@@ -1,6 +1,6 @@
 # Phase 9 Proposal — Personal Daily-Driver v1
 
-**Status:** Step 1 final checkpoint complete; Step 2 not started
+**Status:** Step 2 checkpoint complete; Steps 5 and 7 remain
 **Date:** 2026-09-16 ICT
 **Target:** This Mac and this user account only
 
@@ -59,6 +59,28 @@ Microphone TCC. Before production voice use, `com.jlagent.control` and
 `com.jlagent.voice-runtime` must use the same stable Apple-issued team
 identity; JL must not own Microphone TCC, and CuaDriver must retain its own
 official TCC owner.
+
+## Step 2 review status — supported build/sign configuration
+
+Implemented only the build/sign configuration slice from the implementation
+sequence:
+
+- SwiftPM build scripts share the supported Command Line Tools lane:
+  `MacOSX15.5.sdk`, `CLANG_MODULE_CACHE_PATH`, and
+  `SWIFTPM_MODULECACHE_OVERRIDE` under the project-local `.build` directory.
+- `JL Agent` may remain ad-hoc signed for development. A configured app
+  identity must be a valid Apple Development identity.
+- `JL Voice Runtime` remains fail-closed without a valid Apple Development
+  identity. No certificate enrollment, provisioning, signing identity, or TCC
+  state was changed.
+- Native contract compilation has a matching wrapper so it uses the same
+  supported Swift lane.
+
+The bundle identifiers remain `com.jlagent.control` and
+`com.jlagent.voice-runtime`. Packaging and runtime lifecycle are already
+satisfied by Step 1 and remain outside this Step 2 slice. Library migration,
+voice-host implementation, CuaDriver validation, Settings/Diagnostics, and
+lazy optional initialization remain outside this Step 2 slice.
 
 ## 1. Build blocker — exact supported setup on this Mac
 

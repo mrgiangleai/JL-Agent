@@ -33,6 +33,30 @@ Last updated: 2026-09-16 ICT
   notarization, distribution, clean-machine install, auto-update, full
   rollback/migration, large diagnostics UI, and new capabilities.
 
+## Phase 9 Step 2 review checkpoint — supported build/sign configuration
+
+- Step 2 implements only the supported SwiftPM build/sign configuration from
+  `PHASE9_PROPOSAL.md`. App and voice-host build scripts now share the explicit
+  `MacOSX15.5.sdk` lane and project-local `CLANG_MODULE_CACHE_PATH` and
+  `SWIFTPM_MODULECACHE_OVERRIDE` settings.
+- `JL Agent` retains the development-only ad-hoc default. When configured,
+  `JL_CODE_SIGN_IDENTITY` must name a valid Apple Development identity.
+  `JL_VOICE_CODE_SIGN_IDENTITY` is required and must name a valid Apple
+  Development identity; the voice script fails closed otherwise.
+- Native contract compilation has a matching `run-native-tests.sh` wrapper so
+  its SwiftPM invocation uses the same supported lane. The packaging and
+  runtime lifecycle requirements corresponding to sequence Steps 3–4 are
+  already satisfied by Step 1. Bundle identifiers and all runtime, Hermes,
+  Phase 6, TCC, and trust boundaries are unchanged.
+- Validation passed: shell syntax, `git diff --check`, release `JLAgentApp`
+  build with ad-hoc signature, and compile-only `JLAgentNativeTests`. The
+  voice-host script correctly rejected missing signing identity with exit 64.
+  Native test execution was not run because its harness mutates temporary
+  state and Keychain items outside the project boundary.
+- Step 2 checkpoint is complete. Steps 3–4 are satisfied by Step 1; Steps 5
+  and 7 remain unimplemented. Step 6 remains blocked on the unavailable
+  Apple-issued signing identity.
+
 ## Phase 8 current state
 
 - Phase 8 is complete for the reduced Memory + Skill Manager scope. The native

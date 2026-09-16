@@ -6,20 +6,15 @@ app_root="${script_dir:h}"
 project_root="${app_root:h}"
 cd "$app_root"
 
-swift_sdk="${JL_SWIFT_SDKROOT:-/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk}"
-if [[ ! -d "$swift_sdk" ]]; then
-  print -u2 -- "error: supported Swift SDK is missing: $swift_sdk"
-  exit 69
-fi
-export SDKROOT="$swift_sdk"
-export CLANG_MODULE_CACHE_PATH="$app_root/.build/ModuleCache"
-export SWIFTPM_MODULECACHE_OVERRIDE="$app_root/.build/ModuleCache"
+source "$script_dir/build-config.sh"
+jl_configure_swift_build_environment "$app_root"
+signing_identity="${JL_CODE_SIGN_IDENTITY:--}"
+jl_validate_app_signing_identity "$signing_identity"
 
 bin_dir="$(swift build -c release --show-bin-path)"
 swift build -c release --product JLAgentApp
 
 app_dir="$bin_dir/JL Agent.app"
-signing_identity="${JL_CODE_SIGN_IDENTITY:--}"
 contents="$app_dir/Contents"
 mkdir -p "$contents/MacOS" "$contents/Resources"
 cp "$bin_dir/JLAgentApp" "$contents/MacOS/JLAgentApp"

@@ -5,24 +5,11 @@ script_dir="${0:A:h}"
 app_root="${script_dir:h}"
 cd "$app_root"
 
+source "$script_dir/build-config.sh"
+jl_configure_swift_build_environment "$app_root"
+
 signing_identity="${JL_VOICE_CODE_SIGN_IDENTITY:-}"
-if [[ -z "$signing_identity" || "$signing_identity" == "-" ]]; then
-  print -u2 -- "error: JL_VOICE_CODE_SIGN_IDENTITY must name an Apple Development or Developer ID Application identity"
-  exit 64
-fi
-
-case "$signing_identity" in
-  "Apple Development: "*|"Developer ID Application: "*) ;;
-  *)
-    print -u2 -- "error: unsupported identity class; use Apple Development or Developer ID Application"
-    exit 64
-    ;;
-esac
-
-if ! security find-identity -v -p codesigning | grep -Fq -- "\"$signing_identity\""; then
-  print -u2 -- "error: requested signing identity is not valid in the current keychains: $signing_identity"
-  exit 69
-fi
+jl_validate_voice_signing_identity "$signing_identity"
 
 bin_dir="$(swift build -c release --show-bin-path)"
 swift build -c release --product JLVoiceRuntime
