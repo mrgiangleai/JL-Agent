@@ -135,10 +135,7 @@ public final class RuntimeProcessController: @unchecked Sendable {
   }
 
   private func openDiagnosticLog() throws -> FileHandle {
-    let library = paths.root.deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-    let directory = library.appendingPathComponent("Logs/JL Agent", isDirectory: true)
+    let directory = paths.logs
     try FileManager.default.createDirectory(
       at: directory,
       withIntermediateDirectories: true,

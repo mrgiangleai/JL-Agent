@@ -1,6 +1,6 @@
 # Phase 9 Proposal — Personal Daily-Driver v1
 
-**Status:** Step 2 checkpoint complete; Steps 5, Step 6 functionality, and Step 7 remain
+**Status:** Step 5 checkpoint complete; Step 6 functionality and Step 7 remain
 **Date:** 2026-09-17 ICT
 **Target:** This Mac and this user account only
 
@@ -87,6 +87,28 @@ The bundle identifiers remain `com.jlagent.control` and
 satisfied by Step 1 and remain outside this Step 2 slice. Library migration,
 voice-host implementation, CuaDriver validation, Settings/Diagnostics, and
 lazy optional initialization remain outside this Step 2 slice.
+
+## Step 5 review status — private Library state and forward migration
+
+Implemented only the Library layout and forward-migration slice:
+
+- Authoritative runtime state is under
+  `~/Library/Application Support/JL Agent/runtime/`; Hermes-owned state is under
+  `~/Library/Application Support/JL Agent/hermes/`.
+- Rebuildable model assets use `~/Library/Caches/JL Agent/models/`, and runtime
+  diagnostics use `~/Library/Logs/JL Agent/`. The native process controller uses
+  the same documented log location.
+- Known legacy Hermes/automation state and the project-local `.jl-agent/models`
+  cache are copied through private atomic staging directories. Existing source
+  directories are preserved, and conflicts, symlinks, unsupported files, or
+  unsafe destinations fail closed before runtime startup.
+- The runtime sets `HERMES_HOME` to the Library Hermes profile and rejects a
+  conflicting inherited value. No second Hermes core, memory store, capability,
+  integration, or trust-boundary change was introduced.
+
+Focused evidence: runtime-service tests passed (9), including migration,
+source preservation, and conflict failure; Python compilation and diff checks
+passed; the Swift release app build passed with the documented build lane.
 
 ## 1. Build blocker — exact supported setup on this Mac
 

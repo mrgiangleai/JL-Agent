@@ -47,6 +47,26 @@ Last updated: 2026-09-17 ICT
   large diagnostics UI, and new capabilities. Actual voice/CuaDriver
   functionality remains in Step 6 scope and is not deferred.
 
+## Phase 9 Step 5 checkpoint — private Library state and forward migration
+
+- Step 5 is complete. Runtime state uses
+  `~/Library/Application Support/JL Agent/runtime/`; Hermes-owned state uses
+  `~/Library/Application Support/JL Agent/hermes/`; model cache uses
+  `~/Library/Caches/JL Agent/models/`; and diagnostics use
+  `~/Library/Logs/JL Agent/`.
+- Known legacy Hermes/automation state and project-local `.jl-agent/models`
+  content are copied with private atomic staging. Source directories are never
+  removed. Conflicts, symlinks, unsupported files, and unsafe paths fail closed
+  before runtime startup. A conflicting inherited `HERMES_HOME` is rejected.
+- The native process controller writes its diagnostic log under the same
+  documented Library log location. Hermes remains the sole core and the
+  existing trust boundaries remain unchanged.
+- Focused validation passed: runtime-service tests `9/9` in normal macOS
+  context, Python compilation, `git diff --check`, and Swift release
+  `JLAgentApp` build with the documented `MacOSX15.5.sdk` lane.
+- Step 6 functionality and Step 7 remain. Signing, persistent TCC identity,
+  distribution, and other explicitly deferred work remain deferred.
+
 ## Phase 9 Step 2 review checkpoint — supported build/sign configuration
 
 - Step 2 implements only the supported SwiftPM build/sign configuration from

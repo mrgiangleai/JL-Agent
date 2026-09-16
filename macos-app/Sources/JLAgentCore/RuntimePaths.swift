@@ -8,6 +8,18 @@ public struct RuntimePaths: Equatable, Sendable {
   public let readiness: URL
   public let consentPublicKey: URL
 
+  public var hermes: URL {
+    root.deletingLastPathComponent().appendingPathComponent("hermes")
+  }
+
+  public var modelCache: URL {
+    root.deletingLastPathComponent().appendingPathComponent("cache/models")
+  }
+
+  public var logs: URL {
+    root.deletingLastPathComponent().appendingPathComponent("logs")
+  }
+
   public init(root: URL? = nil) {
     let base =
       root

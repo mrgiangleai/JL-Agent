@@ -17,6 +17,7 @@ from jl_agent.runtime_service import (
     build_runtime_service,
     inspect_runtime_lifecycle,
     main,
+    prepare_library_state,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,6 +103,55 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
             composed.server.handler.assistant_handler  # type: ignore[attr-defined]
         )
         composed.shutdown()
+
+    def test_library_layout_migrates_known_state_without_removing_sources(self) -> None:
+        legacy_root = Path(self.temporary.name) / "checkout"
+        legacy_models = legacy_root / ".jl-agent" / "models"
+        legacy_models.mkdir(parents=True, mode=0o700)
+        self.paths.root.mkdir(mode=0o700)
+        self.paths.root.chmod(0o700)
+        (legacy_models / "model.bin").write_bytes(b"model")
+        (self.paths.root / "hermes-home").mkdir(parents=True, mode=0o700)
+        (self.paths.root / "hermes-home" / "config.yaml").write_text("profile\n")
+        (self.paths.root / "automation").mkdir(parents=True, mode=0o700)
+        (self.paths.root / "automation" / "jobs.json").write_text("[]\n")
+
+        migration = prepare_library_state(
+            self.paths, legacy_project_root=legacy_root
+        )
+
+        self.assertEqual(migration["hermes"], "migrated")
+        self.assertEqual(migration["models"], "migrated")
+        self.assertEqual(
+            (self.paths.hermes / "config.yaml").read_text(), "profile\n"
+        )
+        self.assertEqual((self.paths.hermes / "jobs.json").read_text(), "[]\n")
+        self.assertEqual((self.paths.models / "model.bin").read_bytes(), b"model")
+        self.assertTrue((self.paths.root / "hermes-home").exists())
+        self.assertTrue((self.paths.root / "automation").exists())
+        self.assertTrue(legacy_models.exists())
+        self.assertEqual(
+            (self.paths.root / "storage-migration.json").stat().st_mode & 0o777,
+            0o600,
+        )
+
+    def test_library_layout_fails_closed_on_migration_conflict(self) -> None:
+        legacy_root = Path(self.temporary.name) / "checkout"
+        legacy_models = legacy_root / ".jl-agent" / "models"
+        legacy_models.mkdir(parents=True, mode=0o700)
+        (legacy_models / "model.bin").write_bytes(b"legacy")
+        self.paths.models.mkdir(parents=True, mode=0o700)
+        self.paths.models.parent.chmod(0o700)
+        self.paths.root.mkdir(mode=0o700)
+        self.paths.root.chmod(0o700)
+        (self.paths.models / "model.bin").write_bytes(b"different")
+
+        with self.assertRaisesRegex(RuntimeError, "migration conflict"):
+            prepare_library_state(
+                self.paths, legacy_project_root=legacy_root
+            )
+
+        self.assertEqual((legacy_models / "model.bin").read_bytes(), b"legacy")
 
     def test_stopped_runtime_credential_can_rotate_without_exposure(self) -> None:
         root = Path(self.temporary.name) / "rotation"

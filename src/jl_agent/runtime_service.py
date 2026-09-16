@@ -7,7 +7,9 @@ import hashlib
 import json
 import os
 import plistlib
+import secrets
 import signal
+import shutil
 import stat
 import subprocess
 import sys
@@ -67,18 +69,22 @@ class RuntimePaths:
     readiness: Path
     consent_socket: Path
     consent_public_key: Path
+    hermes: Path
+    models: Path
+    logs: Path
 
     @classmethod
     def user_local(cls, root: str | Path | None = None) -> RuntimePaths:
-        base = (
-            Path(root)
-            if root is not None
-            else Path.home()
-            / "Library"
-            / "Application Support"
-            / "JL Agent"
-            / "runtime"
-        )
+        if root is None:
+            support = Path.home() / "Library" / "Application Support" / "JL Agent"
+            base = support / "runtime"
+            cache = Path.home() / "Library" / "Caches" / "JL Agent"
+            logs = Path.home() / "Library" / "Logs" / "JL Agent"
+        else:
+            base = Path(root)
+            support = base.parent
+            cache = support / "cache"
+            logs = support / "logs"
         return cls(
             root=base,
             socket=base / "jl-agent.sock",
@@ -87,7 +93,162 @@ class RuntimePaths:
             readiness=base / "ready.json",
             consent_socket=base / "jl-agent-consent.sock",
             consent_public_key=base / "native-consent-public-key.der",
+            hermes=support / "hermes",
+            models=cache / "models",
+            logs=logs,
         )
+
+
+def _ensure_private_directory(path: Path) -> None:
+    if path.is_symlink():
+        raise PermissionError(f"private directory is a symlink: {path}")
+    path.mkdir(parents=True, mode=0o700, exist_ok=True)
+    details = path.lstat()
+    if (
+        not stat.S_ISDIR(details.st_mode)
+        or details.st_uid != os.geteuid()
+        or stat.S_IMODE(details.st_mode) != 0o700
+    ):
+        raise PermissionError(f"private directory is unsafe: {path}")
+
+
+def _validate_migratable_tree(path: Path) -> None:
+    details = path.lstat()
+    if not stat.S_ISDIR(details.st_mode) or stat.S_ISLNK(details.st_mode):
+        raise RuntimeError(f"user-data migration source is not a directory: {path}")
+    for entry in os.scandir(path):
+        child = Path(entry.path)
+        child_details = child.lstat()
+        if stat.S_ISLNK(child_details.st_mode):
+            raise RuntimeError(f"user-data migration source contains a symlink: {child}")
+        if stat.S_ISDIR(child_details.st_mode):
+            _validate_migratable_tree(child)
+        elif not stat.S_ISREG(child_details.st_mode):
+            raise RuntimeError(f"user-data migration source contains an unsupported file: {child}")
+
+
+def _file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _copy_tree_contents(source: Path, destination: Path) -> None:
+    for entry in sorted(source.iterdir(), key=lambda item: item.name):
+        target = destination / entry.name
+        details = entry.lstat()
+        if stat.S_ISDIR(details.st_mode):
+            if target.exists() or target.is_symlink():
+                if not target.is_dir() or target.is_symlink():
+                    raise RuntimeError(f"user-data migration conflict: {target}")
+            else:
+                target.mkdir(mode=0o700)
+            _copy_tree_contents(entry, target)
+        elif stat.S_ISREG(details.st_mode):
+            if target.exists() or target.is_symlink():
+                if not target.is_file() or _file_digest(entry) != _file_digest(target):
+                    raise RuntimeError(f"user-data migration conflict: {target}")
+                continue
+            shutil.copy2(entry, target)
+        else:
+            raise RuntimeError(f"user-data migration contains an unsupported file: {entry}")
+
+
+def _harden_private_tree(path: Path) -> None:
+    for entry in path.rglob("*"):
+        details = entry.lstat()
+        if stat.S_ISLNK(details.st_mode):
+            raise RuntimeError(f"migrated user data contains a symlink: {entry}")
+        if stat.S_ISDIR(details.st_mode):
+            os.chmod(entry, stat.S_IMODE(details.st_mode) & 0o700 or 0o700)
+        elif stat.S_ISREG(details.st_mode):
+            os.chmod(entry, stat.S_IMODE(details.st_mode) & 0o700 or 0o600)
+    os.chmod(path, 0o700)
+
+
+def _migrate_tree_group(sources: tuple[Path, ...], destination: Path) -> str:
+    existing = tuple(source for source in sources if source.exists())
+    if not existing:
+        _ensure_private_directory(destination)
+        return "absent"
+    for source in existing:
+        _validate_migratable_tree(source)
+
+    if destination.exists() or destination.is_symlink():
+        if destination.is_symlink() or not destination.is_dir():
+            raise RuntimeError(f"user-data migration destination is unsafe: {destination}")
+        for source in existing:
+            for entry in source.rglob("*"):
+                if not entry.is_file():
+                    continue
+                target = destination / entry.relative_to(source)
+                if not target.is_file() or _file_digest(entry) != _file_digest(target):
+                    raise RuntimeError(f"user-data migration conflict: {target}")
+        _ensure_private_directory(destination)
+        return "already-present"
+
+    staging = destination.parent / f".{destination.name}.migration-{secrets.token_hex(8)}"
+    try:
+        staging.mkdir(mode=0o700)
+        for source in existing:
+            _copy_tree_contents(source, staging)
+        _harden_private_tree(staging)
+        os.replace(staging, destination)
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging)
+        raise
+    _ensure_private_directory(destination)
+    return "migrated"
+
+
+def _write_private_json(path: Path, payload: dict[str, object]) -> None:
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}")
+    descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, sort_keys=True, separators=(",", ":"))
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def prepare_library_state(
+    paths: RuntimePaths, *, legacy_project_root: Path | None = None
+) -> dict[str, object]:
+    """Prepare private Library paths and migrate only known legacy JL state.
+
+    Sources are copied into an atomic staging directory and are never removed.
+    Any conflict or unsafe source fails closed before the runtime starts.
+    """
+    _ensure_private_directory(paths.root)
+    _ensure_private_directory(paths.hermes.parent)
+    _ensure_private_directory(paths.models.parent)
+    _ensure_private_directory(paths.logs)
+    legacy_model_sources = (
+        (legacy_project_root / ".jl-agent" / "models",)
+        if legacy_project_root is not None
+        else ()
+    )
+    migration = {
+        "schema_version": 1,
+        "state": "ready",
+        "hermes": _migrate_tree_group(
+            (paths.root / "hermes-home", paths.root / "automation"), paths.hermes
+        ),
+        "models": _migrate_tree_group(legacy_model_sources, paths.models),
+    }
+    _write_private_json(paths.root / "storage-migration.json", migration)
+    return migration
 
 
 def require_internal_apfs(path: Path) -> None:
@@ -370,18 +531,18 @@ def build_runtime_service(
     )
     automation_runtime = AutomationRuntime(
         root / "upstream" / "hermes-agent",
-        paths.root / "automation",
+        paths.hermes,
         approvals,
     )
     automation_manager = AutomationManager(
         upstream=root / "upstream" / "hermes-agent",
-        home=paths.root / "automation",
+        home=paths.hermes,
         approvals=approvals,
     )
     skill_manager = SkillManager(
         PinnedHermesSkillsGateway(
             root / "upstream" / "hermes-agent",
-            paths.root / "hermes-home",
+            paths.hermes,
         ),
         audit,
     )
@@ -439,7 +600,7 @@ def build_runtime_service(
         backend=HermesVoiceBackend(
             root / "upstream" / "hermes-agent",
             model_cache_root=(
-                paths.root.parent.parent.parent / "Caches" / "JL Agent" / "models"
+                paths.models
             ),
             sherpa_manifest_path=(
                 root / "config" / "models" / "sherpa-gigaspeech-kws-fp32.json"
@@ -527,9 +688,24 @@ def main(argv: list[str] | None = None) -> int:
         FileCredentialProvider(paths.credential).rotate()
         print("JL Agent runtime credential rotated")
         return 0
+    runtime_paths = RuntimePaths.user_local(arguments.runtime_dir)
     if sys.platform == "darwin":
-        runtime_paths = RuntimePaths.user_local(arguments.runtime_dir)
         require_internal_apfs(runtime_paths.root)
+    prepare_library_state(
+        runtime_paths,
+        legacy_project_root=Path(__file__).resolve().parents[2],
+    )
+    existing_hermes_home = os.environ.get("HERMES_HOME")
+    if (
+        existing_hermes_home
+        and Path(existing_hermes_home).resolve() != runtime_paths.hermes.resolve()
+    ):
+        print(
+            "JL Agent runtime startup failed: HERMES_HOME does not match the JL Library profile",
+            file=sys.stderr,
+        )
+        return 1
+    os.environ["HERMES_HOME"] = str(runtime_paths.hermes)
 
     service = build_runtime_service(runtime_root=arguments.runtime_dir)
 
