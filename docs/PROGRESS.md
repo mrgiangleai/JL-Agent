@@ -91,6 +91,27 @@ Last updated: 2026-09-17 ICT
 - Step 7 remains the only unimplemented Phase 9 step. No further
   implementation phase is planned.
 
+## Phase 9 Step 7 checkpoint — minimal Settings/Diagnostics and lazy startup
+
+- Step 7 is complete. The existing Settings surface reports authenticated
+  runtime state/PID, Hermes revision, voice-host identity, CuaDriver
+  identity/readiness, migration state, and the four documented Library
+  locations.
+- It provides explicit diagnostics refresh, redacted metadata export, and safe
+  model-cache repair. Repair moves the rebuildable cache aside for recovery
+  before creating a private replacement. Export excludes credentials, keys,
+  raw audio, prompts, reasoning, and unrestricted arguments.
+- Ordinary launch starts the packaged foreground runtime and performs only the
+  existing cheap authenticated readiness/status work. Voice requirements/model
+  probes, Skill Manager listing, automation history, model construction,
+  microphone capture, wake listening, scheduler work, and provider/inference
+  work remain explicit-action paths.
+- Focused validation passed: Swift release `JLAgentApp` build with nested voice
+  host, native-surface tests `5/5`, and `git diff --check`.
+- Phase 9 personal-v1 implementation is complete. No further implementation
+  phase is planned. Stable signing, persistent TCC identity, distribution, and
+  other explicitly deferred work remain deferred.
+
 ## Phase 9 Step 2 review checkpoint — supported build/sign configuration
 
 - Step 2 implements only the supported SwiftPM build/sign configuration from

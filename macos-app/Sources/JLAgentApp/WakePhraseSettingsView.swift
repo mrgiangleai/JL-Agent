@@ -29,6 +29,37 @@ struct WakePhraseSettingsView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
       }
+
+      Section("Diagnostics") {
+        LabeledContent("Runtime", value: viewModel.connectionState.rawValue)
+        LabeledContent("PID", value: viewModel.runtimePIDText)
+        LabeledContent("Hermes pin", value: viewModel.hermesRevision)
+        LabeledContent("Voice host", value: "com.jlagent.voice-runtime")
+        LabeledContent(
+          "CuaDriver",
+          value: viewModel.computerUseStatus?.driverBundleID ?? "not detected"
+        )
+        LabeledContent("Migration", value: viewModel.migrationStatus)
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Runtime state: \(viewModel.runtimeLocation)")
+          Text("Hermes state: \(viewModel.hermesLocation)")
+          Text("Model cache: \(viewModel.modelCacheLocation)")
+          Text("Logs: \(viewModel.logsLocation)")
+        }
+        .font(.caption2.monospaced())
+        .textSelection(.enabled)
+        HStack {
+          Button("Refresh Diagnostics") { viewModel.refreshDiagnostics() }
+          Button("Export Redacted Diagnostics") { viewModel.exportDiagnostics() }
+          Button("Repair Model Cache", role: .destructive) {
+            viewModel.repairModelCache()
+          }
+          .disabled(viewModel.isWorking)
+        }
+        Text(viewModel.diagnosticMessage)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
     }
   }
 }

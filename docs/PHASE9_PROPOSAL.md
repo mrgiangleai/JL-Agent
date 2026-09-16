@@ -1,6 +1,6 @@
 # Phase 9 Proposal — Personal Daily-Driver v1
 
-**Status:** Step 6 functionality checkpoint complete; Step 7 remains
+**Status:** Personal-v1 implementation complete; signing/distribution deferred
 **Date:** 2026-09-17 ICT
 **Target:** This Mac and this user account only
 
@@ -138,6 +138,28 @@ Focused evidence: voice, voice IPC, computer-use, and native-surface tests
 passed (34); shell syntax passed; ad-hoc voice-host build and strict bundle
 verification passed; the packaged JL app build passed with its nested voice
 host and packaged Hermes revision.
+
+## Step 7 review status — minimal Settings/Diagnostics and lazy startup
+
+Implemented only the final personal-v1 usability slice:
+
+- The existing Settings surface now reports authenticated runtime state/PID,
+  Hermes revision, voice-host identity, CuaDriver identity/readiness, migration
+  state, and the four documented Library locations.
+- It provides explicit refresh, redacted diagnostic export, and safe model-cache
+  repair. Repair moves the rebuildable cache aside for recovery before creating
+  a private replacement. Exported metadata contains no credentials, keys, raw
+  audio, prompts, reasoning, or unrestricted arguments.
+- Ordinary launch remains lazy: it starts the packaged foreground runtime and
+  performs only the existing cheap authenticated readiness/status work. Voice
+  requirements/model probes, Skill Manager listing, automation history, model
+  construction, microphone capture, wake listening, scheduler work, and
+  provider/inference work remain behind explicit user actions.
+
+Focused evidence: Swift release app build passed with the nested voice host;
+native-surface tests passed (5); and diff checks passed. All personal-v1
+implementation steps are now complete. Stable signing, persistent TCC
+identity, distribution, and other explicitly deferred work remain deferred.
 
 ## 1. Build blocker — exact supported setup on this Mac
 

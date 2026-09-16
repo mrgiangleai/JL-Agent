@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import JLAgentCore
 
@@ -46,8 +47,11 @@ final class AgentViewModel: ObservableObject {
   @Published var testedWakePhrase: String?
   @Published var wakePhraseMessage = "Test a phrase before making it the default."
   @Published var runtimePID: Int?
+  @Published var hermesRevision = "unknown"
   @Published var runtimeMessage = "Starting the packaged JL runtime…"
   @Published var consentIdentityMatches = false
+  @Published var migrationStatus = "Not checked"
+  @Published var diagnosticMessage = "Diagnostics have not been exported."
   @Published var isWorking = false
 
   let callerID = "native-macos-app"
@@ -98,6 +102,7 @@ final class AgentViewModel: ObservableObject {
           )
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
+        refreshDiagnostics()
       } catch {
         apply(error)
       }
@@ -120,6 +125,7 @@ final class AgentViewModel: ObservableObject {
           )
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
+        refreshDiagnostics()
       } catch {
         apply(error)
       }
@@ -294,6 +300,90 @@ final class AgentViewModel: ObservableObject {
 
   func reject(_ challenge: ConsentChallenge) {
     decide(challenge, decision: .reject)
+  }
+
+  func refreshDiagnostics() {
+    let marker = paths.root.appendingPathComponent("storage-migration.json")
+    guard let data = try? Data(contentsOf: marker),
+      let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      value["schema_version"] as? Int == 1,
+      let state = value["state"] as? String
+    else {
+      migrationStatus = "Unavailable or invalid"
+      return
+    }
+    migrationStatus = state
+  }
+
+  func exportDiagnostics() {
+    let diagnosticURL = paths.logs.appendingPathComponent("jl-agent-diagnostics.json")
+    let computerUse = computerUseStatus
+    let voice = voiceStatus
+    let payload: [String: Any] = [
+      "schema_version": 1,
+      "runtime_state": connectionState.rawValue,
+      "runtime_pid": runtimePID.map { $0 } ?? NSNull(),
+      "transport": "AF_UNIX",
+      "hermes_revision": hermesRevision,
+      "voice_host_bundle_id": "com.jlagent.voice-runtime",
+      "voice_enabled": voice.map { $0.enabled } ?? NSNull(),
+      "voice_activation_approved": voice.map { $0.activationApproved } ?? NSNull(),
+      "cua_driver_bundle_id": computerUse?.driverBundleID ?? NSNull(),
+      "cua_driver_team_id": computerUse?.driverTeamID ?? NSNull(),
+      "cua_driver_identity_ready": computerUse?.driverIdentityReady ?? NSNull(),
+      "cua_driver_execution_ready": computerUse?.executionReady ?? NSNull(),
+      "migration_status": migrationStatus,
+      "locations": [
+        "runtime": paths.root.path,
+        "hermes": paths.hermes.path,
+        "models": paths.modelCache.path,
+        "logs": paths.logs.path,
+      ],
+    ]
+    do {
+      try FileManager.default.createDirectory(
+        at: paths.logs,
+        withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700]
+      )
+      let data = try JSONSerialization.data(
+        withJSONObject: payload,
+        options: [.prettyPrinted, .sortedKeys]
+      )
+      try data.write(to: diagnosticURL, options: .atomic)
+      chmod(diagnosticURL.path, 0o600)
+      diagnosticMessage = "Redacted diagnostics exported to \(diagnosticURL.path)."
+    } catch {
+      diagnosticMessage = "Diagnostics export failed: \(error.localizedDescription)"
+    }
+  }
+
+  func repairModelCache() {
+    guard !isWorking else { return }
+    isWorking = true
+    defer { isWorking = false }
+    do {
+      if FileManager.default.fileExists(atPath: paths.modelCache.path) {
+        let values = try paths.modelCache.resourceValues(
+          forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        )
+        guard values.isDirectory == true, values.isSymbolicLink != true else {
+          throw RuntimeClientError.invalidRequest("model cache is not a private directory")
+        }
+        let backup = paths.modelCache.deletingLastPathComponent()
+          .appendingPathComponent("models.repair-\(UUID().uuidString)")
+        try FileManager.default.moveItem(at: paths.modelCache, to: backup)
+      }
+      try FileManager.default.createDirectory(
+        at: paths.modelCache,
+        withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700]
+      )
+      chmod(paths.modelCache.path, 0o700)
+      diagnosticMessage = "Model cache repaired; previous cache was moved aside for recovery."
+    } catch {
+      diagnosticMessage = "Model cache repair failed: \(error.localizedDescription)"
+    }
   }
 
   func refreshActivity() async {
@@ -893,6 +983,7 @@ final class AgentViewModel: ObservableObject {
 
   private func apply(_ status: RuntimeStatus, localConsentFingerprint: String) {
     runtimePID = status.runtimePID
+    hermesRevision = status.hermesRevision
     computerUseStatus = status.computerUse
     automationStatus = status.automation
     consentIdentityMatches =
@@ -995,6 +1086,11 @@ final class AgentViewModel: ObservableObject {
   var runtimePIDText: String {
     runtimePID.map(String.init) ?? "not running / unreachable"
   }
+
+  var runtimeLocation: String { paths.root.path }
+  var hermesLocation: String { paths.hermes.path }
+  var modelCacheLocation: String { paths.modelCache.path }
+  var logsLocation: String { paths.logs.path }
 
   private static func voiceSummary(_ status: VoiceStatus) -> String {
     if !status.enabled {
