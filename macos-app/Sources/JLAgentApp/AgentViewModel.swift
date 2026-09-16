@@ -23,6 +23,12 @@ final class AgentViewModel: ObservableObject {
   @Published var resultText = "No request sent."
   @Published var pendingConsent: ConsentChallenge?
   @Published var activity: [ActivityEvent] = []
+  @Published var skills: [ManagedSkill] = []
+  @Published var selectedSkillName: String?
+  @Published var skillPreview: SkillPreview?
+  @Published var skillScan: SkillScan?
+  @Published var skillMessage = "Skills have not been checked."
+  @Published var isSkillWorking = false
   @Published var computerUseStatus: ComputerUseStatus?
   @Published var voiceStatus: VoiceStatus?
   @Published var voiceEvents: [VoiceEvent] = []
@@ -89,6 +95,7 @@ final class AgentViewModel: ObservableObject {
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
         await refreshActivity()
+        await refreshSkills()
         await refreshVoice()
         await refreshAutomation()
       } catch {
@@ -112,6 +119,7 @@ final class AgentViewModel: ObservableObject {
           )
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
+        await refreshSkills()
         await refreshVoice()
         await refreshAutomation()
       } catch {
@@ -273,6 +281,135 @@ final class AgentViewModel: ObservableObject {
       }.value
     } catch {
       if activity.isEmpty { resultText = display(error) }
+    }
+  }
+
+  func refreshSkills() async {
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    do {
+      let page = try await Task.detached {
+        try client.skillsList(callerID: callerID, sessionID: sessionID)
+      }.value
+      skills = page.skills
+      skillMessage = page.skills.isEmpty
+        ? "No Hermes-managed skills installed."
+        : "\(page.count) managed skill\(page.count == 1 ? "" : "s"). Installed skills remain outside normal conversation context."
+    } catch {
+      skillMessage = display(error)
+    }
+  }
+
+  func importSkill(from url: URL) {
+    guard !isSkillWorking else { return }
+    guard url.hasDirectoryPath || url.lastPathComponent == "SKILL.md" else {
+      skillMessage = "Choose a skill folder or its root SKILL.md file."
+      return
+    }
+    let path = url.path
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    isSkillWorking = true
+    skillMessage = "Importing: quarantine and Hermes Skills Guard scan in progress…"
+    Task {
+      do {
+        let state = try await Task.detached {
+          try client.importSkill(
+            sourcePath: path,
+            callerID: callerID,
+            sessionID: sessionID
+          )
+        }.value
+        skillMessage = "Imported \(state.name). Hermes installed it Disabled by default."
+        skillPreview = nil
+        skillScan = nil
+        await refreshSkills()
+      } catch {
+        skillMessage = display(error)
+      }
+      isSkillWorking = false
+    }
+  }
+
+  func previewSkill(_ skill: ManagedSkill) {
+    guard !isSkillWorking else { return }
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    let name = skill.name
+    selectedSkillName = name
+    isSkillWorking = true
+    skillMessage = "Reading a bounded Hermes preview for \(name)…"
+    Task {
+      do {
+        skillPreview = try await Task.detached {
+          try client.skillPreview(
+            name: name,
+            maxChars: 2_048,
+            callerID: callerID,
+            sessionID: sessionID
+          )
+        }.value
+        skillMessage = "Preview is bounded to 2,048 characters; no skill execution occurred."
+      } catch {
+        skillMessage = display(error)
+      }
+      isSkillWorking = false
+    }
+  }
+
+  func scanSkill(_ skill: ManagedSkill) {
+    guard !isSkillWorking else { return }
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    let name = skill.name
+    selectedSkillName = name
+    isSkillWorking = true
+    skillMessage = "Running Hermes Skills Guard for \(name)…"
+    Task {
+      do {
+        skillScan = try await Task.detached {
+          try client.scanSkill(name: name, callerID: callerID, sessionID: sessionID)
+        }.value
+        skillMessage = "Hermes scan completed for \(name)."
+      } catch {
+        skillMessage = display(error)
+      }
+      isSkillWorking = false
+    }
+  }
+
+  func setSkill(_ skill: ManagedSkill, enabled: Bool) {
+    guard !isSkillWorking else { return }
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    let name = skill.name
+    isSkillWorking = true
+    skillMessage = enabled
+      ? "Enabling \(name) visibility through Hermes…"
+      : "Disabling \(name) visibility through Hermes…"
+    Task {
+      do {
+        let state = try await Task.detached {
+          try client.setSkillEnabled(
+            name: name,
+            enabled: enabled,
+            callerID: callerID,
+            sessionID: sessionID
+          )
+        }.value
+        skillMessage = state.enabled
+          ? "\(state.name) enabled for Hermes discovery; JL authorization is unchanged."
+          : "\(state.name) disabled."
+        await refreshSkills()
+      } catch {
+        skillMessage = display(error)
+      }
+      isSkillWorking = false
     }
   }
 

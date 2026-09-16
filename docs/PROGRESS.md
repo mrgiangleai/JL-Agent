@@ -2,6 +2,31 @@
 
 Last updated: 2026-09-16 ICT
 
+## Phase 8 current state
+
+- Phase 8 is complete for the reduced Memory + Skill Manager scope. The native
+  SwiftUI Skills panel uses authenticated JL IPC for metadata-only list,
+  bounded preview/scan, local folder or `SKILL.md` import, and explicit
+  Enable/Disable.
+- Local import composes pinned Hermes quarantine, Skills Guard, managed install,
+  lock/provenance, and disabled configuration. Imported skills remain Disabled
+  until explicitly enabled; Enable never authorizes a JL action.
+- No Hermes source, memory behavior, model-facing skill tool, skill execution,
+  provider/model call, dependency install, network path, or UI-to-Hermes direct
+  import was added. Existing JL gates remain unchanged.
+- One bounded authenticated-handler E2E passed with a harmless local skill:
+  quarantine -> scan -> install -> Disabled -> bounded preview/scan -> Enable
+  -> Disable. Audit/provenance/hash and zero action-decoder calls were verified.
+- Focused validation passed 9 Skill Manager tests, 10 runtime/client/request
+  regression tests, Swift syntax parsing, and diff checks. Native build is
+  host-blocked by a CommandLineTools Swift SDK/compiler mismatch and an
+  unwritable global module cache; production code was not changed for it.
+- Hermes remains pinned at
+  `044a77b3b6af4ce16138d42762f812a20b9f7a89`; the Phase 6 patch remains
+  intentionally present and reverse-checks against `PHASE6_UPSTREAM.patch`.
+- See `PHASE8_REPORT.md` and `PHASE8_HANDOFF.md`. Memory query-scoping remains
+  deferred.
+
 ## Phase 7 current state
 
 - Phase 7 implementation complete for the unified JL Assistant Loop. Typed

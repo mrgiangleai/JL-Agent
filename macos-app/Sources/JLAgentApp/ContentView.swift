@@ -1,8 +1,10 @@
 import JLAgentCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
   @ObservedObject var viewModel: AgentViewModel
+  @State private var showingSkillImporter = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -52,6 +54,104 @@ struct ContentView: View {
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           .frame(minHeight: 44, maxHeight: 120)
+        }
+      }
+
+      GroupBox("Skills") {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack {
+            Text(viewModel.skillMessage)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Spacer()
+            Button("Refresh") { Task { await viewModel.refreshSkills() } }
+            Button("Import Skill") { showingSkillImporter = true }
+              .disabled(viewModel.isSkillWorking || viewModel.isWorking)
+          }
+          Text(
+            "Hermes-managed only. Installed skills are Disabled by default; Enable changes "
+              + "visibility, not JL authorization. Import and scan execute no skill code."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+
+          if viewModel.skills.isEmpty {
+            Text("No managed skills.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          } else {
+            List(viewModel.skills) { skill in
+              VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline) {
+                  Text(skill.name).font(.headline)
+                  Text(skill.enabled ? "Enabled" : "Disabled")
+                    .font(.caption.bold())
+                    .foregroundStyle(skill.enabled ? .green : .orange)
+                  Spacer()
+                  Button("Preview") { viewModel.previewSkill(skill) }
+                  Button("Scan") { viewModel.scanSkill(skill) }
+                  Button(skill.enabled ? "Disable" : "Enable") {
+                    viewModel.setSkill(skill, enabled: !skill.enabled)
+                  }
+                  .disabled(viewModel.isSkillWorking || viewModel.isWorking)
+                }
+                if !skill.description.isEmpty {
+                  Text(skill.description)
+                    .font(.caption)
+                    .lineLimit(2)
+                }
+                HStack(spacing: 12) {
+                  Text("Readiness: \(skill.scanVerdict.isEmpty ? "unknown" : skill.scanVerdict)")
+                  Text("Provenance: \(skill.provenance)")
+                  if !skill.contentHash.isEmpty {
+                    Text("Hash: \(String(skill.contentHash.prefix(16)))…")
+                  }
+                }
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+              }
+              .padding(.vertical, 3)
+            }
+            .frame(minHeight: 90, maxHeight: 210)
+          }
+
+          if let preview = viewModel.skillPreview {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Bounded preview — \(preview.name)").font(.caption.bold())
+              Text("Status: \(preview.enabled ? "Enabled" : "Disabled") • \(preview.provenance)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+              ScrollView {
+                Text(preview.content)
+                  .font(.caption.monospaced())
+                  .textSelection(.enabled)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+              }
+              .frame(minHeight: 50, maxHeight: 150)
+              .overlay(RoundedRectangle(cornerRadius: 4).stroke(.quaternary))
+            }
+          }
+
+          if let scan = viewModel.skillScan {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Latest Hermes scan — \(scan.name)").font(.caption.bold())
+              Text("Verdict: \(scan.verdict) • trust: \(scan.trustLevel) • allowed: \(scan.allowed ? "yes" : "no")")
+                .font(.caption.monospaced())
+                .foregroundStyle(scan.allowed ? .green : .orange)
+              Text(scan.summary)
+                .font(.caption)
+              if !scan.policyReason.isEmpty {
+                Text(scan.policyReason)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+              ForEach(scan.findings.prefix(6)) { finding in
+                Text("• \(finding.kind): \(finding.detail)")
+                  .font(.caption2)
+                  .foregroundStyle(.secondary)
+              }
+            }
+          }
         }
       }
 
@@ -301,6 +401,14 @@ struct ContentView: View {
         approve: { viewModel.approveAutomation(challenge) },
         reject: { viewModel.rejectAutomation(challenge) }
       )
+    }
+    .fileImporter(
+      isPresented: $showingSkillImporter,
+      allowedContentTypes: [.folder, .data],
+      allowsMultipleSelection: false
+    ) { result in
+      guard case .success(let urls) = result, let url = urls.first else { return }
+      viewModel.importSkill(from: url)
     }
   }
 

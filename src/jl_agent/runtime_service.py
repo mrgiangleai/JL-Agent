@@ -45,6 +45,7 @@ from .control.hermes_projection import HERMES_REVISION, HermesProjection
 from .control.ipc import UnixSocketServer
 from .control.request_state import SecureControlRequestHandler
 from .control.router import DeterministicModelRouter, RouterPolicy
+from .control.skill_manager import PinnedHermesSkillsGateway, SkillManager
 from .control.voice import (
     HermesTextOnlyTurnRunner,
     HermesVoiceBackend,
@@ -345,6 +346,13 @@ def build_runtime_service(
         home=paths.root / "automation",
         approvals=approvals,
     )
+    skill_manager = SkillManager(
+        PinnedHermesSkillsGateway(
+            root / "upstream" / "hermes-agent",
+            paths.root / "hermes-home",
+        ),
+        audit,
+    )
     automation_handler = AutomationRequestHandler(
         automation_manager, lambda: automation_runtime.scheduler_enabled
     )
@@ -388,6 +396,7 @@ def build_runtime_service(
         status_provider=runtime_status,
         activity_reader=audit.safe_activity,
         automation_handler=automation_handler,
+        skill_handler=skill_manager,
     )
     assistant = AssistantAdmission(
         turn_runner=hermes_turn_runner,

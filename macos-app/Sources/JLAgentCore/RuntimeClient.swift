@@ -119,6 +119,85 @@ public struct JLRuntimeClient: Sendable {
     return try values.map(ActivityEvent.init(value:))
   }
 
+  public func skillsList(
+    callerID: String,
+    sessionID: String,
+    limit: Int = 100,
+    offset: Int = 0
+  ) throws -> ManagedSkillPage {
+    let result = try authenticatedRequest(
+      operation: "skills-list",
+      payload: [
+        "limit": .integer(min(max(1, limit), 100)),
+        "offset": .integer(min(max(0, offset), 1_000_000)),
+      ],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try ManagedSkillPage(result: result)
+  }
+
+  public func skillPreview(
+    name: String,
+    maxChars: Int = 2_048,
+    callerID: String,
+    sessionID: String
+  ) throws -> SkillPreview {
+    let result = try authenticatedRequest(
+      operation: "skill-preview",
+      payload: [
+        "name": .string(name),
+        "max_chars": .integer(min(max(1, maxChars), 8_192)),
+      ],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try SkillPreview(result: result)
+  }
+
+  public func importSkill(
+    sourcePath: String,
+    callerID: String,
+    sessionID: String
+  ) throws -> SkillState {
+    let result = try authenticatedRequest(
+      operation: "skill-import",
+      payload: ["source_path": .string(sourcePath)],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try SkillState(result: result)
+  }
+
+  public func scanSkill(
+    name: String,
+    callerID: String,
+    sessionID: String
+  ) throws -> SkillScan {
+    let result = try authenticatedRequest(
+      operation: "skill-scan",
+      payload: ["name": .string(name)],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try SkillScan(result: result)
+  }
+
+  public func setSkillEnabled(
+    name: String,
+    enabled: Bool,
+    callerID: String,
+    sessionID: String
+  ) throws -> SkillState {
+    let result = try authenticatedRequest(
+      operation: enabled ? "skill-enable" : "skill-disable",
+      payload: ["name": .string(name)],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try SkillState(result: result)
+  }
+
   public func assistantRequest(
     text: String,
     callerID: String,

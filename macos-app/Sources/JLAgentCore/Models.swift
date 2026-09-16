@@ -271,6 +271,162 @@ public struct ActivityEvent: Identifiable, Equatable, Sendable {
   ]
 }
 
+public struct ManagedSkill: Identifiable, Equatable, Sendable {
+  public var id: String { name }
+  public let name: String
+  public let description: String
+  public let category: String
+  public let enabled: Bool
+  public let provenance: String
+  public let scanVerdict: String
+  public let contentHash: String
+  public let installPath: String
+
+  init(value: JSONValue) throws {
+    guard
+      let item = value.objectValue,
+      let name = item["name"]?.stringValue,
+      let enabled = item["enabled"]?.boolValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.name = name
+    self.description = item["description"]?.stringValue ?? ""
+    self.category = item["category"]?.stringValue ?? ""
+    self.enabled = enabled
+    self.provenance = skillProvenanceText(item["provenance"])
+    self.scanVerdict = item["scan_verdict"]?.stringValue ?? "unknown"
+    self.contentHash = item["content_hash"]?.stringValue ?? ""
+    self.installPath = item["install_path"]?.stringValue ?? ""
+  }
+}
+
+public struct ManagedSkillPage: Equatable, Sendable {
+  public let skills: [ManagedSkill]
+  public let count: Int
+  public let offset: Int
+  public let limit: Int
+
+  init(result: [String: JSONValue]) throws {
+    guard
+      let values = result["skills"]?.arrayValue,
+      let count = result["count"]?.intValue,
+      let offset = result["offset"]?.intValue,
+      let limit = result["limit"]?.intValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.skills = try values.map(ManagedSkill.init(value:))
+    self.count = count
+    self.offset = offset
+    self.limit = limit
+  }
+}
+
+public struct SkillPreview: Equatable, Sendable {
+  public let name: String
+  public let description: String
+  public let content: String
+  public let enabled: Bool
+  public let provenance: String
+
+  init(result: [String: JSONValue]) throws {
+    guard
+      let name = result["name"]?.stringValue,
+      let description = result["description"]?.stringValue,
+      let content = result["content"]?.stringValue,
+      let enabled = result["enabled"]?.boolValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.name = name
+    self.description = description
+    self.content = content
+    self.enabled = enabled
+    self.provenance = skillProvenanceText(result["provenance"])
+  }
+}
+
+public struct SkillFinding: Identifiable, Equatable, Sendable {
+  public var id: String { "\(kind)|\(detail)" }
+  public let kind: String
+  public let detail: String
+
+  init(value: JSONValue) throws {
+    guard let item = value.objectValue else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.kind = item["kind"]?.stringValue ?? item["code"]?.stringValue ?? "finding"
+    self.detail = item["detail"]?.stringValue
+      ?? item["message"]?.stringValue
+      ?? item["description"]?.stringValue
+      ?? "Finding returned by Hermes Skills Guard."
+  }
+}
+
+public struct SkillScan: Equatable, Sendable {
+  public let name: String
+  public let verdict: String
+  public let trustLevel: String
+  public let summary: String
+  public let findings: [SkillFinding]
+  public let contentHash: String
+  public let provenance: String
+  public let allowed: Bool
+  public let policyReason: String
+
+  init(result: [String: JSONValue]) throws {
+    guard
+      let name = result["name"]?.stringValue,
+      let verdict = result["verdict"]?.stringValue,
+      let trustLevel = result["trust_level"]?.stringValue,
+      let summary = result["summary"]?.stringValue,
+      let findings = result["findings"]?.arrayValue,
+      let allowed = result["allowed"]?.boolValue,
+      let policyReason = result["policy_reason"]?.stringValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.name = name
+    self.verdict = verdict
+    self.trustLevel = trustLevel
+    self.summary = summary
+    self.findings = try findings.map(SkillFinding.init(value:))
+    self.contentHash = result["content_hash"]?.stringValue ?? ""
+    self.provenance = skillProvenanceText(result["provenance"])
+    self.allowed = allowed
+    self.policyReason = policyReason
+  }
+}
+
+public struct SkillState: Equatable, Sendable {
+  public let name: String
+  public let enabled: Bool
+
+  init(result: [String: JSONValue]) throws {
+    guard
+      let name = result["name"]?.stringValue,
+      let enabled = result["enabled"]?.boolValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.name = name
+    self.enabled = enabled
+  }
+}
+
+private func skillProvenanceText(_ value: JSONValue?) -> String {
+  guard let value else { return "unknown" }
+  if let text = value.stringValue { return text }
+  if let object = value.objectValue {
+    return object["source_url"]?.stringValue
+      ?? object["source"]?.stringValue
+      ?? object["source_kind"]?.stringValue
+      ?? "unknown"
+  }
+  return "unknown"
+}
+
 public struct VoiceCapabilityStatus: Equatable, Sendable {
   public let available: Bool
   public let active: Bool

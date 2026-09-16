@@ -59,6 +59,7 @@ enum NativeContractTests {
     try malformedAndUnsupportedResponsesFailSafely()
     try assistantRequestUsesTypedAuthenticatedIPC()
     try assistantResponsePreservesConsentChallenge()
+    try skillsUseBoundedAuthenticatedIPC()
     try consentPayloadCannotCarryWildcardApproval()
     try activityRejectsSensitiveFields()
     try computerUsePermissionStatusIsStructured()
@@ -74,7 +75,92 @@ enum NativeContractTests {
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     try missingEnrolledConsentKeyRequiresExplicitRotation()
-    print("20 native contract tests passed")
+    print("21 native contract tests passed")
+  }
+
+  private static func skillsUseBoundedAuthenticatedIPC() throws {
+    let transport = StubTransport { request in
+      let envelope = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "skill envelope is malformed"
+      )
+      try check(envelope["credential"] as? String != nil, "skill operation omitted credential")
+      let operation = try require(envelope["operation"] as? String, "skill operation is missing")
+      let payload = try require(envelope["payload"] as? [String: Any], "skill payload is malformed")
+      switch operation {
+      case "skills-list":
+        try check(payload["limit"] as? Int == 100, "skill list limit was not bounded")
+        try check(payload["offset"] as? Int == 0, "skill list offset was not bounded")
+        return try response(
+          for: request,
+          ok: true,
+          result: [
+            "skills": [[
+              "name": "local-safe",
+              "description": "A harmless local skill",
+              "category": "imported",
+              "enabled": false,
+              "provenance": "local-folder",
+              "scan_verdict": "safe",
+              "content_hash": "abc123",
+              "install_path": "imported/local-safe",
+            ]],
+            "count": 1,
+            "offset": 0,
+            "limit": 100,
+          ],
+          error: nil
+        )
+      case "skill-preview":
+        try check(payload["max_chars"] as? Int == 8_192, "skill preview limit was not bounded")
+        return try response(
+          for: request,
+          ok: true,
+          result: [
+            "name": "local-safe",
+            "description": "A harmless local skill",
+            "content": "# local-safe\nRead-only preview",
+            "enabled": false,
+            "provenance": "local-folder",
+          ],
+          error: nil
+        )
+      case "skill-enable", "skill-disable":
+        return try response(
+          for: request,
+          ok: true,
+          result: [
+            "name": "local-safe",
+            "enabled": operation == "skill-enable",
+          ],
+          error: nil
+        )
+      default:
+        throw TestFailure(description: "unexpected skill operation \(operation)")
+      }
+    }
+    let client = makeClient(transport: transport)
+    let page = try client.skillsList(
+      callerID: "native-app",
+      sessionID: "session-1",
+      limit: 1_000,
+      offset: -1
+    )
+    try check(page.count == 1 && page.skills.first?.enabled == false, "skill metadata was not decoded")
+    let preview = try client.skillPreview(
+      name: "local-safe",
+      maxChars: 10_000,
+      callerID: "native-app",
+      sessionID: "session-1"
+    )
+    try check(preview.content.count < 8_192, "skill preview was not bounded")
+    let enabled = try client.setSkillEnabled(
+      name: "local-safe",
+      enabled: true,
+      callerID: "native-app",
+      sessionID: "session-1"
+    )
+    try check(enabled.enabled, "skill enable state was not decoded")
   }
 
   private static func assistantRequestUsesTypedAuthenticatedIPC() throws {

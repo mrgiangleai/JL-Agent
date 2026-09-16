@@ -93,6 +93,7 @@ ActivityReader = Callable[[int], tuple[Mapping[str, Any], ...]]
 VoiceHandler = Callable[[str, Mapping[str, Any], str, str], Mapping[str, object]]
 AutomationHandler = Callable[[IPCRequestEnvelope], IPCResponseEnvelope]
 AssistantHandler = Callable[[IPCRequestEnvelope], IPCResponseEnvelope]
+SkillHandler = Callable[[IPCRequestEnvelope], IPCResponseEnvelope]
 
 
 class SecureControlRequestHandler:
@@ -112,6 +113,7 @@ class SecureControlRequestHandler:
         voice_handler: VoiceHandler | None = None,
         automation_handler: AutomationHandler | None = None,
         assistant_handler: AssistantHandler | None = None,
+        skill_handler: SkillHandler | None = None,
     ) -> None:
         self.credentials = credentials
         self.approvals = approvals
@@ -124,6 +126,7 @@ class SecureControlRequestHandler:
         self.voice_handler = voice_handler
         self.automation_handler = automation_handler
         self.assistant_handler = assistant_handler
+        self.skill_handler = skill_handler
 
     def __call__(self, envelope: IPCRequestEnvelope) -> IPCResponseEnvelope:
         lifecycle = RequestLifecycle(envelope.request_id)
@@ -199,6 +202,18 @@ class SecureControlRequestHandler:
                 lifecycle.transition(RequestState.FAILED)
                 return self._failure(envelope, lifecycle, "assistant_unavailable")
             return self.assistant_handler(envelope)
+        if envelope.operation in {
+            "skills-list",
+            "skill-preview",
+            "skill-import",
+            "skill-scan",
+            "skill-enable",
+            "skill-disable",
+        }:
+            if self.skill_handler is None:
+                lifecycle.transition(RequestState.FAILED)
+                return self._failure(envelope, lifecycle, "skills_unavailable")
+            return self.skill_handler(envelope)
         if envelope.operation not in {"prepare", "execute"}:
             lifecycle.transition(RequestState.FAILED)
             return self._failure(envelope, lifecycle, "unsupported_operation")
