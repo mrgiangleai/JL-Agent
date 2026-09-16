@@ -119,6 +119,26 @@ public struct JLRuntimeClient: Sendable {
     return try values.map(ActivityEvent.init(value:))
   }
 
+  public func assistantRequest(
+    text: String,
+    callerID: String,
+    sessionID: String,
+    timezone: String = TimeZone.current.identifier
+  ) throws -> AssistantResponse {
+    let result = try authenticatedRequest(
+      operation: "assistant-request",
+      payload: [
+        "text": .string(text),
+        "input_mode": .string("typed"),
+        "timezone": .string(timezone),
+      ],
+      callerID: callerID,
+      sessionID: sessionID,
+      responseTimeout: assistantResponseTimeoutSeconds
+    )
+    return try AssistantResponse(result: result)
+  }
+
   public func automationStatus(
     callerID: String,
     sessionID: String
@@ -370,7 +390,23 @@ public struct JLRuntimeClient: Sendable {
     decision: ConsentDecision,
     signature: String
   ) throws -> String {
-    let result = try request(
+    let result = try submitConsentResult(
+      challenge: challenge,
+      decision: decision,
+      signature: signature
+    )
+    guard let state = result["state"]?.stringValue else {
+      throw RuntimeClientError.malformedResponse
+    }
+    return state
+  }
+
+  public func submitConsentResult(
+    challenge: ConsentChallenge,
+    decision: ConsentDecision,
+    signature: String
+  ) throws -> [String: JSONValue] {
+    try request(
       endpoint: paths.consentSocket,
       envelope: RequestEnvelope(
         protocolVersion: protocolVersion,
@@ -386,10 +422,6 @@ public struct JLRuntimeClient: Sendable {
         credential: nil
       )
     )
-    guard let state = result["state"]?.stringValue else {
-      throw RuntimeClientError.malformedResponse
-    }
-    return state
   }
 
   public func submitAutomationConsent(

@@ -14,6 +14,10 @@ final class AgentViewModel: ObservableObject {
   }
 
   @Published var connectionState: ConnectionState = .unavailable
+  @Published var assistantText = ""
+  @Published var assistantState = "No request sent."
+  @Published var assistantResultText = "No request sent."
+  @Published var pendingAssistantConsent: ConsentChallenge?
   @Published var draft = RequestDraft()
   @Published var decision = "—"
   @Published var resultText = "No request sent."
@@ -49,6 +53,7 @@ final class AgentViewModel: ObservableObject {
   private let consentClock = ContinuousClock()
   private var activeRequestID: String?
   private var activeDraft: RequestDraft?
+  private var pendingAssistantConsentDeadline: ContinuousClock.Instant?
   private var pendingConsentDeadline: ContinuousClock.Instant?
   private var pendingAutomationConsentDeadline: ContinuousClock.Instant?
   private var initialized = false
@@ -151,6 +156,57 @@ final class AgentViewModel: ObservableObject {
       }
       isWorking = false
     }
+  }
+
+  func sendAssistantRequest() {
+    guard !isWorking else { return }
+    let text = assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else {
+      assistantState = "malformed_payload"
+      assistantResultText = "Text must be non-empty."
+      return
+    }
+    pendingAssistantConsent = nil
+    pendingAssistantConsentDeadline = nil
+    isWorking = true
+    assistantState = "sending"
+    assistantResultText = "Sending typed assistant request..."
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    let timezone = TimeZone.current.identifier
+    Task {
+      do {
+        let response = try await Task.detached {
+          try client.assistantRequest(
+            text: text,
+            callerID: callerID,
+            sessionID: sessionID,
+            timezone: timezone
+          )
+        }.value
+        assistantState = response.state
+        assistantResultText = response.resultJSON
+        if let challenge = response.consent {
+          pendingAssistantConsentDeadline = ConsentExpiryPolicy.deadline(
+            receivedAt: consentClock.now,
+            expiresInSeconds: challenge.expiresInSeconds
+          )
+          pendingAssistantConsent = challenge
+        }
+        isWorking = false
+      } catch {
+        handleAssistantError(error)
+      }
+    }
+  }
+
+  func approveAssistant(_ challenge: ConsentChallenge) {
+    decideAssistant(challenge, decision: .approve)
+  }
+
+  func rejectAssistant(_ challenge: ConsentChallenge) {
+    decideAssistant(challenge, decision: .reject)
   }
 
   func sendRequest() {
@@ -559,6 +615,49 @@ final class AgentViewModel: ObservableObject {
     }
   }
 
+  private func decideAssistant(
+    _ challenge: ConsentChallenge,
+    decision consentDecision: ConsentDecision
+  ) {
+    guard !isWorking else { return }
+    guard let deadline = pendingAssistantConsentDeadline,
+      !ConsentExpiryPolicy.isExpired(deadline: deadline, now: consentClock.now)
+    else {
+      pendingAssistantConsent = nil
+      pendingAssistantConsentDeadline = nil
+      assistantState = "consent_expired"
+      assistantResultText = "Consent expired. Send the request again."
+      return
+    }
+    pendingAssistantConsent = nil
+    pendingAssistantConsentDeadline = nil
+    isWorking = true
+    let signer = signer
+    let client = client
+    Task {
+      do {
+        let response = try await Task.detached {
+          let signature = try signer.sign(
+            challenge: challenge,
+            decision: consentDecision
+          )
+          return try AssistantResponse(
+            result: client.submitConsentResult(
+              challenge: challenge,
+              decision: consentDecision,
+              signature: signature
+            )
+          )
+        }.value
+        assistantState = response.state
+        assistantResultText = response.resultJSON
+        isWorking = false
+      } catch {
+        handleAssistantError(error)
+      }
+    }
+  }
+
   private func decideAutomation(
     _ challenge: ConsentChallenge,
     decision consentDecision: ConsentDecision
@@ -694,8 +793,25 @@ final class AgentViewModel: ObservableObject {
     Task { await refreshActivity() }
   }
 
+  private func handleAssistantError(_ error: Error) {
+    assistantState = assistantErrorState(error)
+    assistantResultText = display(error)
+    isWorking = false
+    apply(error)
+  }
+
   private func display(_ error: Error) -> String {
     (error as? LocalizedError)?.errorDescription ?? "Request failed safely."
+  }
+
+  private func assistantErrorState(_ error: Error) -> String {
+    if case RuntimeClientError.server(let code, _) = error {
+      return code
+    }
+    if case RuntimeClientError.malformedResponse = error {
+      return "malformed_response"
+    }
+    return "request_failed"
   }
 
   private func captureForegroundContext(in draft: inout RequestDraft) {

@@ -3,6 +3,7 @@ import Foundation
 public let protocolVersion = 1
 public let maximumMessageBytes = 64 * 1024
 public let defaultTimeoutSeconds: TimeInterval = 2
+public let assistantResponseTimeoutSeconds: TimeInterval = 30
 public let executionResponseTimeoutSeconds: TimeInterval = 90
 
 public struct RequestEnvelope: Codable, Equatable, Sendable {
@@ -429,6 +430,35 @@ public struct ConsentChallenge: Identifiable, Equatable, Sendable {
     self.targetSummary = targetSummary
     self.riskLevel = riskLevel
     self.expiresInSeconds = expires
+  }
+}
+
+public struct AssistantResponse: Equatable, Sendable {
+  public let state: String
+  public let result: [String: JSONValue]
+  public let consent: ConsentChallenge?
+
+  public init(result: [String: JSONValue]) throws {
+    guard let state = result["state"]?.stringValue, !state.isEmpty else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.state = state
+    self.result = result
+    self.consent = result["consent"] == nil
+      ? nil
+      : try ConsentChallenge(result: result)
+  }
+
+  public var resultJSON: String {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    guard
+      let data = try? encoder.encode(result),
+      let text = String(data: data, encoding: .utf8)
+    else {
+      return "{}"
+    }
+    return text
   }
 }
 

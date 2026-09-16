@@ -2,6 +2,26 @@
 
 Last updated: 2026-09-16 ICT
 
+## Phase 7 current state
+
+- Phase 7 implementation complete for the unified JL Assistant Loop. Typed
+  Ask JL and Phase 5 voice transcripts use the shared authenticated
+  `AssistantAdmission` path.
+- `AssistantAdmission` remains admission/delegation only. Conversation is
+  delegated to `HermesTextOnlyTurnRunner` with tools disabled; ambiguous or
+  unsafe action-like input fails closed as `clarification_required` and never
+  falls through to Hermes conversation.
+- Shared typed/voice admission was validated deterministically: 195 Python
+  tests passed and 16 native tests passed.
+- Live voice E2E is **NOT marked PASS**. The one bounded validation was blocked
+  because the test host exposed zero audio devices. No JL, Hermes, or
+  AssistantAdmission failure was observed, and no tool execution occurred.
+- Phase 5 HEY J L, STT, TTS, wake ownership, and voice functionality remain
+  unchanged. No Hermes source or provider implementation was changed.
+- Voice E2E must be revalidated later on an audio-capable host. Phase 7 is
+  closed without another live voice or inference retry; the next phase was not
+  started.
+
 ## Phase 6 current state
 
 - Phase 6 is complete for the approved minimal automation scope. See

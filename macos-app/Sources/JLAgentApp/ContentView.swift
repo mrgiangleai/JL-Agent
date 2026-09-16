@@ -22,6 +22,39 @@ struct ContentView: View {
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
 
+      GroupBox("Ask JL") {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack(alignment: .bottom, spacing: 8) {
+            TextField("Type a request", text: $viewModel.assistantText, axis: .vertical)
+              .textFieldStyle(.roundedBorder)
+              .lineLimit(1...3)
+            Button {
+              viewModel.sendAssistantRequest()
+            } label: {
+              Label("Send", systemImage: "arrow.up.circle.fill")
+            }
+            .keyboardShortcut(.return, modifiers: [.command])
+            .disabled(viewModel.isWorking)
+          }
+          HStack {
+            Text(viewModel.assistantState)
+              .font(.headline)
+            Spacer()
+            if viewModel.isWorking {
+              ProgressView()
+                .controlSize(.small)
+            }
+          }
+          ScrollView {
+            Text(viewModel.assistantResultText)
+              .font(.caption.monospaced())
+              .textSelection(.enabled)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .frame(minHeight: 44, maxHeight: 120)
+        }
+      }
+
       GroupBox("Request / action") {
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
           GridRow {
@@ -253,6 +286,13 @@ struct ContentView: View {
         challenge: challenge,
         approve: { viewModel.approve(challenge) },
         reject: { viewModel.reject(challenge) }
+      )
+    }
+    .sheet(item: $viewModel.pendingAssistantConsent) { challenge in
+      ConsentSheet(
+        challenge: challenge,
+        approve: { viewModel.approveAssistant(challenge) },
+        reject: { viewModel.rejectAssistant(challenge) }
       )
     }
     .sheet(item: $viewModel.pendingAutomationConsent) { challenge in

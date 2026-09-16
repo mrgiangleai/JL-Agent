@@ -57,6 +57,8 @@ enum NativeContractTests {
     try missingCredentialFailsBeforeTransport()
     try authenticationFailureIsStructured()
     try malformedAndUnsupportedResponsesFailSafely()
+    try assistantRequestUsesTypedAuthenticatedIPC()
+    try assistantResponsePreservesConsentChallenge()
     try consentPayloadCannotCarryWildcardApproval()
     try activityRejectsSensitiveFields()
     try computerUsePermissionStatusIsStructured()
@@ -72,7 +74,99 @@ enum NativeContractTests {
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     try missingEnrolledConsentKeyRequiresExplicitRotation()
-    print("18 native contract tests passed")
+    print("20 native contract tests passed")
+  }
+
+  private static func assistantRequestUsesTypedAuthenticatedIPC() throws {
+    let transport = StubTransport { request in
+      let envelope = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "assistant envelope is malformed"
+      )
+      try check(
+        envelope["operation"] as? String == "assistant-request",
+        "wrong assistant operation"
+      )
+      try check(envelope["credential"] as? String != nil, "assistant omitted credential")
+      let payload = try require(
+        envelope["payload"] as? [String: Any],
+        "assistant payload is malformed"
+      )
+      try check(
+        Set(payload.keys) == ["text", "input_mode", "timezone"],
+        "assistant added local classification fields"
+      )
+      try check(payload["text"] as? String == "hello jl", "assistant text was changed")
+      try check(payload["input_mode"] as? String == "typed", "assistant input mode changed")
+      try check(
+        payload["timezone"] as? String == "Asia/Ho_Chi_Minh",
+        "assistant timezone was not preserved"
+      )
+      return try response(
+        for: request,
+        ok: true,
+        result: [
+          "state": "conversation_completed",
+          "reply": "hello from Hermes",
+          "intent": "conversation",
+        ],
+        error: nil
+      )
+    }
+    let result = try makeClient(transport: transport).assistantRequest(
+      text: "hello jl",
+      callerID: "native-app",
+      sessionID: "session-1",
+      timezone: "Asia/Ho_Chi_Minh"
+    )
+    try check(result.state == "conversation_completed", "assistant state was not preserved")
+    try check(
+      result.result["reply"]?.stringValue == "hello from Hermes",
+      "assistant result was not preserved"
+    )
+    try check(
+      transport.timeouts == [assistantResponseTimeoutSeconds],
+      "assistant did not use the bounded response timeout"
+    )
+  }
+
+  private static func assistantResponsePreservesConsentChallenge() throws {
+    let transport = StubTransport { request in
+      try response(
+        for: request,
+        ok: true,
+        result: [
+          "state": "awaiting_approval",
+          "intent": "computer_action",
+          "consent": [
+            "consent_id": "assistant-consent-1",
+            "request_id": "assistant-request-1",
+            "caller_id": "native-app",
+            "session_id": "session-1",
+            "nonce": "nonce-1",
+            "capability_id": "core.hermes.computer-use",
+            "action": "computer_use",
+            "action_classes": ["read-only"],
+            "target_summary": "current screen",
+            "risk_level": "low",
+            "expires_in_seconds": 30,
+          ],
+        ],
+        error: nil
+      )
+    }
+    let result = try makeClient(transport: transport).assistantRequest(
+      text: "capture current screen",
+      callerID: "native-app",
+      sessionID: "session-1",
+      timezone: "UTC"
+    )
+    let challenge = try require(result.consent, "assistant consent challenge was lost")
+    try check(result.state == "awaiting_approval", "assistant approval state was lost")
+    try check(
+      challenge.capabilityID == "core.hermes.computer-use",
+      "assistant consent capability was changed"
+    )
   }
 
   private static func voiceControlUsesAuthenticatedBoundedIPC() throws {
@@ -347,6 +441,28 @@ enum NativeContractTests {
   }
 
   private static func runIntegrationCommand(_ arguments: [String]) throws {
+    let commandArguments = arguments.first == "--"
+      ? Array(arguments.dropFirst())
+      : arguments
+    if commandArguments == ["assistant-smoke"] {
+      let client = JLRuntimeClient()
+      let response = try client.assistantRequest(
+        text: "Hello JL",
+        callerID: "native-e2e-smoke",
+        sessionID: "native-e2e-smoke-session",
+        timezone: "Asia/Ho_Chi_Minh"
+      )
+      try check(
+        response.state == "conversation_completed",
+        "typed conversation returned state \(response.state)"
+      )
+      let reply = try require(
+        response.result["reply"]?.stringValue,
+        "typed conversation returned no reply"
+      )
+      print("native-client assistant smoke passed: state=\(response.state) reply=\(reply)")
+      return
+    }
     guard arguments.count == 4 else {
       throw TestFailure(
         description: "integration command requires mode, runtime root, service, tag"

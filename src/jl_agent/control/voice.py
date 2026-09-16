@@ -13,6 +13,9 @@ from collections.abc import Callable, Mapping
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Protocol, cast
+from uuid import uuid4
+
+from .ipc import PROTOCOL_VERSION, IPCRequestEnvelope, RequestHandler
 
 
 def verify_sherpa_model_assets(
@@ -113,14 +116,17 @@ class VoiceCoordinator:
     """Own voice state, caller binding, and bounded transcript events.
 
     Hermes owns capture, VAD, STT, wake detection, and TTS. JL owns whether those
-    capabilities may start and ensures spoken text reaches a tool-free agent turn.
+    capabilities may start and sends transcripts through the authenticated
+    AssistantAdmission path.
     """
 
     def __init__(
         self,
         *,
         backend: VoiceBackend,
-        turn_runner: Callable[[str], str],
+        assistant_handler: RequestHandler,
+        credential: str,
+        timezone: str = "UTC",
         enabled: bool = False,
         activation_approved: bool = False,
         event_capacity: int = 100,
@@ -128,7 +134,9 @@ class VoiceCoordinator:
         wake_phrase_path: Path | None = None,
     ) -> None:
         self._backend = backend
-        self._turn_runner = turn_runner
+        self._assistant_handler = assistant_handler
+        self._credential = credential
+        self._timezone = timezone
         self._enabled = enabled
         self._activation_approved = activation_approved
         self._events: deque[dict[str, object]] = deque(maxlen=event_capacity)
@@ -374,14 +382,49 @@ class VoiceCoordinator:
                 self._append("voice_error", code="voice_turn_busy")
                 return
             self._turn_active = True
+            owner = self._owner
+        if owner is None:
+            with self._lock:
+                self._append("voice_error", code="voice_session_mismatch")
+                self._turn_active = False
+            return
+        caller_id, session_id = owner
 
         def run() -> None:
             try:
-                reply = self._turn_runner(text).strip()[:32_768]
-                if reply:
-                    with self._lock:
-                        self._append("reply", text=reply)
-                    self._backend.speak(reply)
+                response = self._assistant_handler(
+                    IPCRequestEnvelope(
+                        protocol_version=PROTOCOL_VERSION,
+                        request_id=f"voice-{uuid4().hex}",
+                        caller_id=caller_id,
+                        session_id=session_id,
+                        operation="assistant-request",
+                        payload={
+                            "text": text,
+                            "input_mode": "voice",
+                            "timezone": self._timezone,
+                        },
+                        credential=self._credential,
+                    )
+                )
+                result = dict(response.result or {})
+                state = result.get("state")
+                if not response.ok:
+                    self._append_voice_result(
+                        response.error_code or "voice_turn_failed"
+                    )
+                elif state != "conversation_completed":
+                    self._append_voice_result(str(state or "voice_turn_failed"))
+                else:
+                    reply = result.get("reply")
+                    if not isinstance(reply, str):
+                        self._append_voice_result("voice_turn_failed")
+                    else:
+                        reply = reply.strip()[:32_768]
+                        if reply:
+                            with self._lock:
+                                self._append("reply", text=reply)
+                            self._backend.speak(reply)
             except Exception:
                 with self._lock:
                     self._append("voice_error", code="voice_turn_failed")
@@ -390,6 +433,10 @@ class VoiceCoordinator:
                     self._turn_active = False
 
         self._run_async(run)
+
+    def _append_voice_result(self, code: str) -> None:
+        with self._lock:
+            self._append("voice_error", code=code[:64])
 
     def _on_voice_status(self, status: str) -> None:
         with self._lock:

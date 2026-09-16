@@ -9,6 +9,7 @@ from types import ModuleType
 from typing import cast
 from unittest.mock import patch
 
+from jl_agent.control.ipc import IPCResponseEnvelope
 from jl_agent.control.voice import (
     DEFAULT_WAKE_PHRASE,
     HermesTextOnlyTurnRunner,
@@ -69,15 +70,22 @@ class FakeHermesVoiceBackend:
 class VoiceCoordinatorTests(unittest.TestCase):
     def setUp(self) -> None:
         self.backend = FakeHermesVoiceBackend()
-        self.prompts: list[str] = []
+        self.assistant_requests = []
 
-        def run_turn(prompt: str) -> str:
-            self.prompts.append(prompt)
-            return f"reply: {prompt}"
+        def assistant_request(envelope):
+            self.assistant_requests.append(envelope)
+            return IPCResponseEnvelope.success(
+                envelope.request_id,
+                {
+                    "state": "conversation_completed",
+                    "reply": f"reply: {envelope.payload['text']}",
+                },
+            )
 
         self.voice = VoiceCoordinator(
             backend=self.backend,
-            turn_runner=run_turn,
+            assistant_handler=assistant_request,
+            credential="voice-credential",
             enabled=True,
             activation_approved=True,
             run_async=lambda task: task(),
@@ -86,7 +94,10 @@ class VoiceCoordinatorTests(unittest.TestCase):
     def test_start_requires_both_feature_and_hardware_approval(self) -> None:
         disabled = VoiceCoordinator(
             backend=self.backend,
-            turn_runner=lambda _: "",
+            assistant_handler=lambda _: IPCResponseEnvelope.failure(
+                "unused", "unused", "unused"
+            ),
+            credential="voice-credential",
             enabled=False,
             activation_approved=False,
         )
@@ -95,7 +106,10 @@ class VoiceCoordinatorTests(unittest.TestCase):
 
         gated = VoiceCoordinator(
             backend=self.backend,
-            turn_runner=lambda _: "",
+            assistant_handler=lambda _: IPCResponseEnvelope.failure(
+                "unused", "unused", "unused"
+            ),
+            credential="voice-credential",
             enabled=True,
             activation_approved=False,
         )
@@ -110,12 +124,20 @@ class VoiceCoordinatorTests(unittest.TestCase):
         self.assertEqual(DEFAULT_WAKE_PHRASE, "hey j l")
         self.assertEqual(wake_status["phrase"], DEFAULT_WAKE_PHRASE)
 
-    def test_transcript_runs_a_text_only_turn_and_speaks_reply(self) -> None:
+    def test_transcript_uses_shared_admission_and_speaks_conversation_reply(
+        self,
+    ) -> None:
         self.voice.start_voice("caller", "session")
         assert self.backend.voice_callback is not None
         self.backend.voice_callback("hello")
 
-        self.assertEqual(self.prompts, ["hello"])
+        self.assertEqual(len(self.assistant_requests), 1)
+        request = self.assistant_requests[0]
+        self.assertEqual(request.operation, "assistant-request")
+        self.assertEqual(request.payload["text"], "hello")
+        self.assertEqual(request.payload["input_mode"], "voice")
+        self.assertEqual(request.payload["timezone"], "UTC")
+        self.assertEqual(request.credential, "voice-credential")
         self.assertEqual(self.backend.spoken, ["reply: hello"])
         events = self.voice.events("caller", "session", after=0, limit=20)
         self.assertEqual(
@@ -151,7 +173,10 @@ class VoiceCoordinatorTests(unittest.TestCase):
             store = __import__("pathlib").Path(temporary) / "wake-phrase.json"
             voice = VoiceCoordinator(
                 backend=self.backend,
-                turn_runner=lambda _: "",
+                assistant_handler=lambda _: IPCResponseEnvelope.failure(
+                    "unused", "unused", "unused"
+                ),
+                credential="voice-credential",
                 enabled=True,
                 activation_approved=True,
                 wake_phrase_path=store,
@@ -171,6 +196,33 @@ class VoiceCoordinatorTests(unittest.TestCase):
                 __import__("json").loads(store.read_text())["phrase"], "hello jl"
             )
             self.assertEqual(self.backend.voice_starts, 0)
+
+    def test_non_conversation_admission_result_is_not_spoken(self) -> None:
+        def clarification(envelope):
+            return IPCResponseEnvelope.success(
+                envelope.request_id,
+                {
+                    "state": "clarification_required",
+                    "reason": "ambiguous request",
+                },
+            )
+
+        voice = VoiceCoordinator(
+            backend=self.backend,
+            assistant_handler=clarification,
+            credential="voice-credential",
+            enabled=True,
+            activation_approved=True,
+            run_async=lambda task: task(),
+        )
+        voice.start_voice("caller", "session")
+        assert self.backend.voice_callback is not None
+        self.backend.voice_callback("do something")
+
+        self.assertEqual(self.backend.spoken, [])
+        events = voice.events("caller", "session", after=0, limit=20)
+        self.assertEqual(events[-1]["kind"], "voice_error")
+        self.assertEqual(events[-1]["code"], "clarification_required")
 
     def test_invalid_wake_phrase_fails_closed(self) -> None:
         for phrase in ("", "a", "x" * 65, "hey/hermes"):

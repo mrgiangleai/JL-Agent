@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .automation_runtime import AutomationRuntime
 from .control.approvals import OneTimeApprovalStore
+from .control.assistant_loop import AssistantAdmission
 from .control.audit import AuditLedger
 from .control.auth import FileCredentialProvider
 from .control.automation_management import (
@@ -329,21 +330,10 @@ def build_runtime_service(
         ).validate,
     )
     credentials = FileCredentialProvider(paths.credential)
-    credentials.load_or_create()
+    runtime_credential = credentials.load_or_create()
     verifier = _load_consent_verifier(paths.consent_public_key)
-    voice = VoiceCoordinator(
-        backend=HermesVoiceBackend(
-            root / "upstream" / "hermes-agent",
-            model_cache_root=root / ".jl-agent" / "models",
-            sherpa_manifest_path=(
-                root / "config" / "models" / "sherpa-gigaspeech-kws-fp32.json"
-            ),
-            tts_config=macos_say_tts_config() if sys.platform == "darwin" else None,
-        ),
-        turn_runner=HermesTextOnlyTurnRunner(root / "upstream" / "hermes-agent"),
-        enabled=voice_enabled_from_environment(),
-        activation_approved=voice_activation_approved_from_environment(),
-        wake_phrase_path=paths.root / "wake-phrase.json",
+    hermes_turn_runner = HermesTextOnlyTurnRunner(
+        root / "upstream" / "hermes-agent"
     )
     automation_runtime = AutomationRuntime(
         root / "upstream" / "hermes-agent",
@@ -397,9 +387,30 @@ def build_runtime_service(
         consent_coordinator=consent,
         status_provider=runtime_status,
         activity_reader=audit.safe_activity,
-        voice_handler=voice.handle,
         automation_handler=automation_handler,
     )
+    assistant = AssistantAdmission(
+        turn_runner=hermes_turn_runner,
+        control_handler=handler,
+        automation_handler=automation_handler,
+    )
+    voice = VoiceCoordinator(
+        backend=HermesVoiceBackend(
+            root / "upstream" / "hermes-agent",
+            model_cache_root=root / ".jl-agent" / "models",
+            sherpa_manifest_path=(
+                root / "config" / "models" / "sherpa-gigaspeech-kws-fp32.json"
+            ),
+            tts_config=macos_say_tts_config() if sys.platform == "darwin" else None,
+        ),
+        assistant_handler=handler,
+        credential=runtime_credential,
+        enabled=voice_enabled_from_environment(),
+        activation_approved=voice_activation_approved_from_environment(),
+        wake_phrase_path=paths.root / "wake-phrase.json",
+    )
+    handler.voice_handler = voice.handle
+    handler.assistant_handler = assistant.handle
     consent_handler = TrustedConsentRequestHandler(
         coordinator=consent,
         verifier=verifier,
