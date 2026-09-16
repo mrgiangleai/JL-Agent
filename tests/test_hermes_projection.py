@@ -66,6 +66,21 @@ class HermesProjectionTests(unittest.TestCase):
 
         self.assertFalse(any(result.availability.values()))
 
+    def test_packaged_revision_marker_replaces_git_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pyproject.toml").write_text(
+                f'[project]\nname = "hermes-agent"\nversion = "{HERMES_VERSION}"\n',
+                encoding="utf-8",
+            )
+            (root / ".jl-revision").write_text(
+                HERMES_REVISION + "\n", encoding="ascii"
+            )
+
+            identity = HermesProjection(root).inspect_identity()
+
+        self.assertEqual(identity.revision, HERMES_REVISION)
+
 
 if __name__ == "__main__":
     unittest.main()

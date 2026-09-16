@@ -2,6 +2,37 @@
 
 Last updated: 2026-09-16 ICT
 
+## Phase 9 Step 1 final checkpoint — personal daily-driver packaging/lifecycle
+
+- Step 1 is complete and stopped; Step 2 has not started. `JL Agent.app` starts or
+  reconnects to one packaged foreground JL runtime without Terminal or `.venv`
+  activation; the app has explicit safe Restart/Stop controls.
+- The bundle contains JL source/configuration, the pinned Hermes runtime subset,
+  Phase 6 patched files, and a build-time Hermes revision marker so the runtime
+  does not require the developer checkout or Hermes `.git` metadata.
+- The runtime launcher uses this Mac's known Python 3.13 installation; no
+  dependency installation was performed. The app/runtime still uses the
+  existing authenticated AF_UNIX and consent gates.
+- Runtime readiness and duplicate-owner behavior were verified from the
+  packaged bundle. A clean stop removed the readiness marker; a second runtime
+  invocation was rejected. Runtime state is checked for internal APFS before
+  startup and remains in macOS Library locations.
+- Focused validation: Swift release build with Swift `6.3.2.1.108` and
+  `MacOSX15.5.sdk`; Hermes projection tests `4/4`; runtime-service tests
+  `7/7`; packaged runtime ready/clean-stop; duplicate runtime rejected. The
+  reproducible build lane requires explicit `SDKROOT`, project-local
+  `CLANG_MODULE_CACHE_PATH`, and `SWIFTPM_MODULECACHE_OVERRIDE`. No live
+  voice, Cua, inference, heavy tests, signing enrollment, or TCC changes were
+  performed.
+- Unresolved signing/TCC requirement: the keychain has `0 valid identities`;
+  the app is currently ad-hoc signed; production voice use still requires a
+  stable same-team Apple-issued identity for `com.jlagent.control` and
+  `com.jlagent.voice-runtime`. Microphone TCC remains deferred to the signed
+  voice host, and CuaDriver remains the owner of its own TCC grants.
+- Deferred as requested: paid signing, production voice/TCC ownership,
+  notarization, distribution, clean-machine install, auto-update, full
+  rollback/migration, large diagnostics UI, and new capabilities.
+
 ## Phase 8 current state
 
 - Phase 8 is complete for the reduced Memory + Skill Manager scope. The native

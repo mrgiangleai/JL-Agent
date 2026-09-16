@@ -46,6 +46,7 @@ final class AgentViewModel: ObservableObject {
   @Published var testedWakePhrase: String?
   @Published var wakePhraseMessage = "Test a phrase before making it the default."
   @Published var runtimePID: Int?
+  @Published var runtimeMessage = "Starting the packaged JL runtime…"
   @Published var consentIdentityMatches = false
   @Published var isWorking = false
 
@@ -56,6 +57,7 @@ final class AgentViewModel: ObservableObject {
   private let credentials: KeychainCredentialProvider
   private let signer: ConsentSigningKey
   private let client: JLRuntimeClient
+  private let runtimeProcess: RuntimeProcessController
   private let consentClock = ContinuousClock()
   private var activeRequestID: String?
   private var activeDraft: RequestDraft?
@@ -71,6 +73,7 @@ final class AgentViewModel: ObservableObject {
     self.credentials = credentials
     self.signer = signer
     self.client = JLRuntimeClient(paths: paths, credentials: credentials)
+    self.runtimeProcess = RuntimeProcessController(paths: paths)
   }
 
   func initialize() {
@@ -85,6 +88,7 @@ final class AgentViewModel: ObservableObject {
     let sessionID = sessionID
     Task {
       do {
+        try await runtimeProcess.ensureReady()
         let observed = try await Task.detached {
           _ = try signer.provisionPublicKey(at: paths.consentPublicKey)
           _ = try credentials.loadOrImport(from: paths.credential)
@@ -94,10 +98,6 @@ final class AgentViewModel: ObservableObject {
           )
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
-        await refreshActivity()
-        await refreshSkills()
-        await refreshVoice()
-        await refreshAutomation()
       } catch {
         apply(error)
       }
@@ -112,6 +112,7 @@ final class AgentViewModel: ObservableObject {
     let sessionID = sessionID
     Task {
       do {
+        try await runtimeProcess.ensureReady()
         let observed = try await Task.detached {
           (
             try client.status(callerID: callerID, sessionID: sessionID),
@@ -119,13 +120,37 @@ final class AgentViewModel: ObservableObject {
           )
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
-        await refreshSkills()
-        await refreshVoice()
-        await refreshAutomation()
       } catch {
         apply(error)
       }
     }
+  }
+
+  func restartRuntime() {
+    guard !isWorking else { return }
+    isWorking = true
+    runtimeMessage = "Restarting the packaged JL runtime…"
+    Task {
+      do {
+        try await runtimeProcess.restart()
+        isWorking = false
+        runtimeMessage = "JL runtime restarted safely."
+        refreshStatus()
+      } catch {
+        isWorking = false
+        apply(error)
+      }
+    }
+  }
+
+  func stopRuntime() {
+    guard !isWorking else { return }
+    let stopped = runtimeProcess.stopOwnedRuntime()
+    runtimePID = nil
+    connectionState = .unavailable
+    runtimeMessage = stopped
+      ? "JL runtime stopped. Use Refresh Status to start it again."
+      : "JL runtime is not owned by this app and was left running."
   }
 
   func refreshCredential() {
@@ -873,6 +898,7 @@ final class AgentViewModel: ObservableObject {
     consentIdentityMatches =
       status.consentEnrollmentCurrent
       && status.consentKeyFingerprint == localConsentFingerprint
+    runtimeMessage = "JL runtime ready (PID \(status.runtimePID))."
     if !status.ready {
       connectionState = .unavailable
     } else if status.state == "degraded" || !status.consentAvailable
@@ -886,6 +912,7 @@ final class AgentViewModel: ObservableObject {
   }
 
   private func apply(_ error: Error) {
+    runtimeMessage = display(error)
     if !RuntimeStatusSnapshotPolicy.shouldRetain(after: error) {
       runtimePID = nil
       computerUseStatus = nil

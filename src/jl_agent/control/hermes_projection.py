@@ -146,7 +146,7 @@ class HermesProjection:
         revision_reader: Callable[[Path], str] | None = None,
     ) -> None:
         self.root = Path(root)
-        self._revision_reader = revision_reader or _git_revision
+        self._revision_reader = revision_reader or _packaged_or_git_revision
 
     def inspect_identity(self) -> HermesIdentity:
         pyproject_path = self.root / "pyproject.toml"
@@ -243,6 +243,24 @@ def _git_revision(root: Path) -> str:
     except (OSError, subprocess.SubprocessError) as error:
         raise HermesProjectionError("cannot determine Hermes Git revision") from error
     return completed.stdout.strip()
+
+
+def _packaged_or_git_revision(root: Path) -> str:
+    """Read the build-time pin when the packaged bundle has no .git metadata."""
+    marker = root / ".jl-revision"
+    if marker.exists():
+        try:
+            revision = marker.read_text(encoding="ascii").strip()
+        except (OSError, UnicodeError) as error:
+            raise HermesProjectionError(
+                "cannot read packaged Hermes revision"
+            ) from error
+        if len(revision) != 40 or any(
+            character not in "0123456789abcdef" for character in revision
+        ):
+            raise HermesProjectionError("invalid packaged Hermes revision")
+        return revision
+    return _git_revision(root)
 
 
 def _address_field(kind: EntrypointKind) -> str:

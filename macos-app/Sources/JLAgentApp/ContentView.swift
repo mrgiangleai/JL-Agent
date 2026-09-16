@@ -14,7 +14,14 @@ struct ContentView: View {
           .frame(width: 10, height: 10)
         Text("JL Agent: \(viewModel.connectionState.rawValue)")
           .font(.headline)
+        Text(viewModel.runtimeMessage)
+          .font(.caption)
+          .foregroundStyle(.secondary)
         Spacer()
+        Button("Restart Runtime") { viewModel.restartRuntime() }
+          .disabled(viewModel.isWorking)
+        Button("Stop Runtime") { viewModel.stopRuntime() }
+          .disabled(viewModel.isWorking)
         Button("Refresh Status") { viewModel.refreshStatus() }
         Button("Refresh Credential") { viewModel.refreshCredential() }
         Button("Rotate Consent Key") { viewModel.rotateConsentKey() }

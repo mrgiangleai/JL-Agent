@@ -6,8 +6,10 @@ import argparse
 import hashlib
 import json
 import os
+import plistlib
 import signal
 import stat
+import subprocess
 import sys
 import threading
 from collections.abc import Callable
@@ -86,6 +88,36 @@ class RuntimePaths:
             consent_socket=base / "jl-agent-consent.sock",
             consent_public_key=base / "native-consent-public-key.der",
         )
+
+
+def require_internal_apfs(path: Path) -> None:
+    """Fail closed unless the runtime state is on an internal APFS volume."""
+    target = path.resolve()
+    while not target.exists():
+        target = target.parent
+    try:
+        result = subprocess.run(
+            ["/bin/df", "-P", str(target)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        device = result.stdout.splitlines()[-1].split()[0]
+        if not device.startswith("/dev/"):
+            raise RuntimeError("runtime_device_unavailable")
+        info = plistlib.loads(
+            subprocess.run(
+                ["/usr/sbin/diskutil", "info", "-plist", device],
+                check=True,
+                capture_output=True,
+                timeout=5,
+            ).stdout
+        )
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError) as error:
+        raise RuntimeError("runtime_storage_probe_failed") from error
+    if info.get("FilesystemType") != "apfs" or info.get("Internal") is not True:
+        raise RuntimeError("runtime_requires_internal_apfs")
 
 
 def inspect_runtime_lifecycle(paths: RuntimePaths) -> dict[str, object]:
@@ -406,7 +438,9 @@ def build_runtime_service(
     voice = VoiceCoordinator(
         backend=HermesVoiceBackend(
             root / "upstream" / "hermes-agent",
-            model_cache_root=root / ".jl-agent" / "models",
+            model_cache_root=(
+                paths.root.parent.parent.parent / "Caches" / "JL Agent" / "models"
+            ),
             sherpa_manifest_path=(
                 root / "config" / "models" / "sherpa-gigaspeech-kws-fp32.json"
             ),
@@ -493,6 +527,10 @@ def main(argv: list[str] | None = None) -> int:
         FileCredentialProvider(paths.credential).rotate()
         print("JL Agent runtime credential rotated")
         return 0
+    if sys.platform == "darwin":
+        runtime_paths = RuntimePaths.user_local(arguments.runtime_dir)
+        require_internal_apfs(runtime_paths.root)
+
     service = build_runtime_service(runtime_root=arguments.runtime_dir)
 
     def stop(*_: object) -> None:
