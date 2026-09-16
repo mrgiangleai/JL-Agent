@@ -23,8 +23,8 @@ JL_SWIFT_SDKROOT=/path/to/MacOSX15.5.sdk ./Scripts/build-app.sh
 
 `JL_CODE_SIGN_IDENTITY` is optional for the development app. Without it the
 app is ad-hoc signed; when set, it must name a valid Apple Development
-identity. The voice runtime always requires a valid Apple Development
-identity through `JL_VOICE_CODE_SIGN_IDENTITY`.
+identity. The voice runtime may also be ad-hoc signed for this personal Mac;
+macOS may request Microphone permission again after a rebuild.
 
 The build script creates an ad-hoc-signed development app at
 `macos-app/.build/release/JL Agent.app`. Generated `.build` content is ignored.
@@ -32,9 +32,10 @@ The build script creates an ad-hoc-signed development app at
 ## JL Voice Runtime signing
 
 `JL Voice Runtime.app` is a separate, least-privilege microphone permission
-target. Its current executable is deliberately inert: it does not open an
-audio device or request TCC. The build refuses ad-hoc signing so the eventual
-microphone authorization is tied to a stable JL-owned Apple team identity.
+target. Its executable launches the packaged JL runtime with the existing
+Hermes voice boundary enabled for explicit voice or wake actions. Hermes
+continues to own capture, VAD, STT, wake detection, TTS, and voice-turn
+behavior; the Swift host adds no audio engine or second control surface.
 
 Install an eligible Apple Development identity for local development, then
 build with its exact Keychain name:
@@ -44,14 +45,18 @@ export JL_VOICE_CODE_SIGN_IDENTITY="Apple Development: Example (TEAMID)"
 ./Scripts/build-voice-runtime.sh
 ```
 
+For this personal v1, omit `JL_VOICE_CODE_SIGN_IDENTITY` to use an ad-hoc
+development signature. Stable Apple signing, Developer ID, notarization, and
+distribution remain deferred.
+
 The resulting app uses bundle and code identifier
 `com.jlagent.voice-runtime`, Hardened Runtime, the audio-input entitlement, and
 an explicit microphone usage description. The script verifies the entire code
 tree with `--deep --strict`, rejects a missing Team ID or entitlement, and emits
-the designated requirement for inspection. The current bundle has no nested
-runtime; when Hermes is packaged later, every nested code object must be signed
-inside-out with the same JL team identity. Do not launch it for live capture
-until the separate Microphone/TCC gate is approved.
+the designated requirement for inspection. The bundle includes the packaged JL
+runtime and pinned Hermes revision. Launch voice or wake only after the user
+has granted Microphone permission through normal macOS TCC. JL never changes or
+bypasses that permission.
 
 On first launch, the app creates its consent signing key in Keychain and writes
 only the public key to the private JL runtime directory. Start or restart the

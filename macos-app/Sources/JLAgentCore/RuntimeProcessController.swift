@@ -39,6 +39,9 @@ public final class RuntimeProcessController: @unchecked Sendable {
     self.paths = paths
     self.launcherURL =
       launcherURL
+      ?? bundle.resourceURL?.appendingPathComponent(
+        "JLVoiceRuntime.app/Contents/MacOS/JLVoiceRuntime"
+      )
       ?? bundle.resourceURL?.appendingPathComponent("JLRuntime/run-runtime.sh")
       ?? URL(fileURLWithPath: "/__missing__/JLRuntime/run-runtime.sh")
   }

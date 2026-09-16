@@ -1,6 +1,6 @@
 # Phase 9 Proposal — Personal Daily-Driver v1
 
-**Status:** Step 5 checkpoint complete; Step 6 functionality and Step 7 remain
+**Status:** Step 6 functionality checkpoint complete; Step 7 remains
 **Date:** 2026-09-17 ICT
 **Target:** This Mac and this user account only
 
@@ -110,6 +110,35 @@ Focused evidence: runtime-service tests passed (9), including migration,
 source preservation, and conflict failure; Python compilation and diff checks
 passed; the Swift release app build passed with the documented build lane.
 
+## Step 6 review status — voice host functionality and CuaDriver readiness
+
+Implemented only the personal-v1 functionality portion of the voice/CuaDriver
+slice:
+
+- `JLVoiceRuntime` now launches the packaged JL runtime and enables the
+  existing JL voice boundary for explicit voice or wake actions. Hermes remains
+  the owner of microphone capture, VAD, STT, wake detection, TTS, and
+  voice-turn behavior; no native audio engine, second runtime, or new IPC
+  surface was added.
+- `JL Agent.app` embeds the same `JLVoiceRuntime.app`, packaged JL runtime
+  resources, and the pinned Hermes revision. The app lifecycle controller
+  starts that host, so the main app remains an IPC client while the host owns
+  the voice-capable runtime process.
+- The separate host retains bundle ID `com.jlagent.voice-runtime`, the
+  microphone usage description, and the least-privilege audio-input
+  entitlement. Ad-hoc signing is accepted for this personal Mac; a normal
+  user-granted Microphone permission remains mandatory and may need regrant
+  after rebuilds. No TCC state is automated or weakened.
+- Existing CuaDriver readiness continues to require the official
+  `com.trycua.driver` / `YCK386LBJ7` identity and its own Accessibility and
+  Screen Recording grants. JL only reports the existing fail-closed readiness
+  result.
+
+Focused evidence: voice, voice IPC, computer-use, and native-surface tests
+passed (34); shell syntax passed; ad-hoc voice-host build and strict bundle
+verification passed; the packaged JL app build passed with its nested voice
+host and packaged Hermes revision.
+
 ## 1. Build blocker — exact supported setup on this Mac
 
 ### Observed host
@@ -168,9 +197,8 @@ toolchain; Xcode installation or selection is outside this discovery task.
   `Identifier=com.jlagent.control`, `TeamIdentifier=not set`.
 - Its designated requirement is only a build-specific `cdhash`, not a stable
   Apple-team identity.
-- `build-voice-runtime.sh` correctly rejects ad-hoc signing.
-- `JLVoiceRuntime` is currently an inert signed-host placeholder; it does not
-  own the real microphone path yet.
+- Before Step 6, `build-voice-runtime.sh` rejected ad-hoc signing and
+  `JLVoiceRuntime` was an inert signed-host placeholder.
 
 ### Options
 

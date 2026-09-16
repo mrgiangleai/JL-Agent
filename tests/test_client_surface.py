@@ -122,7 +122,7 @@ class NativeClientSurfaceTests(unittest.TestCase):
             for marker in forbidden:
                 self.assertNotIn(marker, text, f"{source} contains {marker}")
 
-    def test_voice_runtime_has_stable_least_privilege_signing_contract(self) -> None:
+    def test_voice_runtime_has_least_privilege_permission_contract(self) -> None:
         voice_root = ROOT / "macos-app" / "VoiceRuntime"
         with (voice_root / "Info.plist").open("rb") as stream:
             info = plistlib.load(stream)
@@ -141,8 +141,10 @@ class NativeClientSurfaceTests(unittest.TestCase):
             ROOT / "macos-app" / "Scripts" / "build-voice-runtime.sh"
         ).read_text(encoding="utf-8")
         self.assertIn("JL_VOICE_CODE_SIGN_IDENTITY", build_script)
-        self.assertIn("Apple Development: ", build_script)
-        self.assertIn("Developer ID Application: ", build_script)
+        build_config = (
+            ROOT / "macos-app" / "Scripts" / "build-config.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Apple Development: ", build_config)
         self.assertIn("--options runtime", build_script)
         self.assertIn("--deep --strict", build_script)
         self.assertIn("com.apple.security.device.audio-input", build_script)
@@ -152,6 +154,10 @@ class NativeClientSurfaceTests(unittest.TestCase):
         host_source = (
             ROOT / "macos-app" / "Sources" / "JLVoiceRuntime" / "main.swift"
         ).read_text(encoding="utf-8")
+        self.assertIn('"JLRuntime/run-runtime.sh"', host_source)
+        self.assertIn('"JL_AGENT_VOICE_ENABLED"', host_source)
+        self.assertIn('"JL_AGENT_VOICE_ACTIVATION_APPROVED"', host_source)
+        self.assertNotIn("installed but microphone activation is not enabled", host_source)
         for live_audio_marker in (
             "AVAudioEngine", "AVCaptureDevice", "AudioQueue", "sounddevice"
         ):

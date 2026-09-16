@@ -13,6 +13,9 @@ jl_validate_app_signing_identity "$signing_identity"
 
 bin_dir="$(swift build -c release --show-bin-path)"
 swift build -c release --product JLAgentApp
+voice_identity="${JL_VOICE_CODE_SIGN_IDENTITY:-${JL_CODE_SIGN_IDENTITY:--}}"
+JL_VOICE_CODE_SIGN_IDENTITY="$voice_identity" "$script_dir/build-voice-runtime.sh" >/dev/null
+voice_app="$bin_dir/JL Voice Runtime.app"
 
 app_dir="$bin_dir/JL Agent.app"
 contents="$app_dir/Contents"
@@ -22,6 +25,7 @@ cp "$app_root/Resources/Info.plist" "$contents/Info.plist"
 runtime_bundle="$contents/Resources/JLRuntime"
 mkdir -p "$runtime_bundle/src" "$runtime_bundle/config" \
   "$runtime_bundle/upstream/hermes-agent"
+cp -R "$voice_app" "$contents/Resources/JLVoiceRuntime.app"
 rsync -a --delete \
   --exclude='__pycache__/' --exclude='*.py[cod]' \
   "$project_root/src/" "$runtime_bundle/src/"

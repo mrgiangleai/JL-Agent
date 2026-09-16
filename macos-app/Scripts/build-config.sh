@@ -41,7 +41,10 @@ jl_validate_app_signing_identity() {
 
 jl_validate_voice_signing_identity() {
   local signing_identity="$1"
-  if [[ -z "$signing_identity" || "$signing_identity" == "-" ]]; then
+  if [[ "$signing_identity" == "-" ]]; then
+    return 0
+  fi
+  if [[ -z "$signing_identity" ]]; then
     print -u2 -- "error: JL_VOICE_CODE_SIGN_IDENTITY must name an Apple Development identity"
     return 64
   fi

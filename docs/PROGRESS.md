@@ -67,6 +67,30 @@ Last updated: 2026-09-17 ICT
 - Step 6 functionality and Step 7 remain. Signing, persistent TCC identity,
   distribution, and other explicitly deferred work remain deferred.
 
+## Phase 9 Step 6 checkpoint — voice host functionality and CuaDriver readiness
+
+- Step 6 functionality is complete. `JLVoiceRuntime` now launches the
+  packaged JL runtime and enables the existing JL voice boundary for explicit
+  voice or wake actions. Hermes remains the owner of microphone capture, VAD,
+  STT, wake detection, TTS, and voice-turn behavior; no native audio engine,
+  second runtime, or new IPC surface was added.
+- `JL Agent.app` embeds the same `JLVoiceRuntime.app`, packaged runtime
+  resources, and the pinned Hermes revision. The lifecycle controller starts
+  that host while the main app remains an IPC client.
+- The host retains `com.jlagent.voice-runtime`, the normal Microphone usage
+  description, and the least-privilege audio-input entitlement. Ad-hoc signing
+  is accepted for this personal Mac; normal user-granted Microphone TCC is
+  still mandatory and may require regrant after rebuilds. JL does not automate,
+  mutate, bypass, or weaken TCC.
+- CuaDriver readiness remains the existing fail-closed path requiring official
+  `com.trycua.driver` / `YCK386LBJ7` identity and driver-owned Accessibility and
+  Screen Recording grants. Signing/distribution work remains deferred.
+- Focused validation passed: voice, voice IPC, computer-use, and native-surface
+  tests `34/34`; shell syntax; ad-hoc voice-host build and strict bundle
+  verification; and packaged `JL Agent.app` build with nested voice host.
+- Step 7 remains the only unimplemented Phase 9 step. No further
+  implementation phase is planned.
+
 ## Phase 9 Step 2 review checkpoint — supported build/sign configuration
 
 - Step 2 implements only the supported SwiftPM build/sign configuration from
