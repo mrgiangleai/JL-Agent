@@ -1,0 +1,506 @@
+diff --git a/cron/scheduler.py b/cron/scheduler.py
+index 7941a73..6d1cda2 100644
+--- a/cron/scheduler.py
++++ b/cron/scheduler.py
+@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
+ 
+ from hermes_constants import get_hermes_home
+ from cron.env_settings import cron_env_setting
++from cron.execution_policy import active_lease, authorize_execution, resolve_policy
+ from hermes_cli._subprocess_compat import windows_hide_flags
+ from hermes_cli.config import (
+     _expand_env_vars, load_config, resolve_cron_model_drift_defaults)
+@@ -1237,14 +1238,15 @@ def _run_no_agent_job(
+     """no_agent short-circuit — the script IS the job (no AIAgent, no tokens). stdout → delivered
+     verbatim; empty stdout or wakeAgent=false → silent success; non-zero exit/timeout → error alert.
+     """
+-    # Load .env first so auto-delivery can resolve *_HOME_CHANNEL: the agent path's per-run dotenv
+-    # reload never runs for no_agent jobs. Does not override existing values.
+-    try:
+-        from hermes_cli.env_loader import load_hermes_dotenv
++    if active_lease(job) is None:
++        # Load .env first so auto-delivery can resolve *_HOME_CHANNEL: the agent path's per-run dotenv
++        # reload never runs for no_agent jobs. Does not override existing values.
++        try:
++            from hermes_cli.env_loader import load_hermes_dotenv
+ 
+-        load_hermes_dotenv(hermes_home=_get_hermes_home())
+-    except Exception:
+-        logger.debug("Job '%s': no_agent .env reload failed", job_id, exc_info=True)
++            load_hermes_dotenv(hermes_home=_get_hermes_home())
++        except Exception:
++            logger.debug("Job '%s': no_agent .env reload failed", job_id, exc_info=True)
+ 
+     script_path = job.get("script")
+     # Legacy/hand-edited no_agent job without a script: pause it, or it re-fires every tick.
+@@ -2229,6 +2231,7 @@ def run_job(
+     ``extra_prompt``: optional per-run context from ``cronjob(action='run', prompt=...)`` (#57331). Appended
+     to the stored prompt for this fire only — never persisted to the job definition.
+     """
++    active_lease(job, start_job=True)
+     job_id = job["id"]
+     job_name = str(job.get("name") or job.get("prompt") or job_id or "cron job")
+ 
+@@ -2417,6 +2420,7 @@ def _run_with_fire_claim_heartbeat(job: dict, run) -> bool:
+         heartbeat_thread.join(timeout=1.0)
+ 
+ 
++@authorize_execution
+ def run_one_job(
+     job: dict, *, adapters=None, loop=None, verbose: bool = False,
+     extra_prompt: Optional[str] = None, cancel_event: Optional[_CancelEventLike] = None,
+@@ -2436,7 +2440,7 @@ def run_one_job(
+ 
+     execution_id = str(job["execution_id"])
+     external_owner = os.environ.get("_HERMES_CRON_EXTERNAL_WORKER") == execution_id
+-    if not external_owner:
++    if not external_owner and active_lease(job) is None:
+         try:
+             if _launch_external_cron_worker(job):
+                 return True
+@@ -2627,6 +2631,8 @@ def _save_compose_deliver(
+         if not owns_output:
+             raise _FireClaimLostDuringSideEffect
+         output_file = save_job_output(job["id"], output)
++    if active_lease(job) is not None:
++        return  # Required-policy jobs only persist local output; no delivery pipeline.
+     if verbose:
+         logger.info("Output saved to: %s", output_file)
+ 
+@@ -2787,6 +2793,7 @@ def _run_one_job_body(
+     extra_prompt: Optional[str] = None, fire_claim_lost: Optional[_CancelEventLike] = None,
+     execution_token: Optional[object] = None,
+ ) -> bool:
++    authorized = active_lease(job) is not None
+     fence = _FireOwnership(job, fire_claim_lost)
+     fire_owner = fence.owner
+     _side_effect_fence = fence.side_effect_fence
+@@ -2827,7 +2834,8 @@ def _run_one_job_body(
+ 
+         # get_secret() fails closed outside a scope; the ticker thread has none. Delivery adapters
+         # resolve credentials, so the scope must span delivery too (reset in the outer finally).
+-        _scope_token = set_secret_scope(build_profile_secret_scope(_get_hermes_home()))
++        if not authorized:
++            _scope_token = set_secret_scope(build_profile_secret_scope(_get_hermes_home()))
+         # Same for terminal policy (gateway/run.py _profile_runtime_scope): else the ticker reads
+         # process-global TERMINAL_* env a concurrent profile pinned. Resolution failure installs a
+         # refusal scope — terminal execution raises instead of using the launch process's policy.
+@@ -2847,7 +2855,8 @@ def _run_one_job_body(
+         from tools.terminal_scope import (
+             install_profile_terminal_scope)
+ 
+-        _terminal_scope_token = install_profile_terminal_scope(_get_hermes_home())
++        if not authorized:
++            _terminal_scope_token = install_profile_terminal_scope(_get_hermes_home())
+         # Defer agent teardown until AFTER delivery; closing first races the live send against a
+         # torn-down async client. run_job hands the agent back via this list.
+         # Defer the cron agent's async-resource teardown until AFTER delivery. run_job normally closes the
+@@ -2938,6 +2947,7 @@ def _run_one_job_body(
+         # send a failure alert on top of the replacement run's; fall through to fenced bookkeeping.
+         if (
+             isinstance(e, Exception)
++            and not authorized
+             and not delivery_attempted
+             and not isinstance(e, _FireClaimLostDuringSideEffect)
+             and not _fire_claim_ownership_lost()
+@@ -3226,6 +3236,10 @@ def _run_external_worker_payload(payload_path: Path, ack_path: Path) -> bool:
+     here before the ready acknowledgement is published.  No side effect runs
+     unless that durable ownership transfer succeeds.
+     """
++    if resolve_policy() is not None:
++        from cron.execution_policy import AuthorizationDenied
++        raise AuthorizationDenied("authorization_detached_disabled")
++
+     try:
+         payload = json.loads(payload_path.read_text(encoding="utf-8"))
+         job = payload["job"]
+@@ -3682,6 +3696,7 @@ def tick(
+     """Check and run all due jobs. File-locked so only one tick runs at a time (gateway ticker vs
+     standalone daemon / manual tick). ``can_dispatch``: optional gate; false leaves due jobs for the
+     next allowed tick. Returns the number of jobs executed (0 if another tick holds the lock)."""
++    embedded = resolve_policy() is not None
+     # Stale-code yield gate — BEFORE the lock race. A process whose checkout was updated under it
+     # serves mixed sys.modules (jobs die on ImportErrors); if a fresher gateway holds the runtime
+     # lock, ITS ticker dispatches. With no fresh holder (desktop-standalone) the tick proceeds.
+@@ -3710,7 +3725,8 @@ def tick(
+         _maybe_reap_dead_owners()
+         # Periodic worktree GC (6h, threaded) — the only sweep gateway-only boxes get.
+         try:
+-            _maybe_run_worktree_maintenance()
++            if not embedded:
++                _maybe_run_worktree_maintenance()
+         except Exception as _wt_exc:
+             logger.debug("Worktree maintenance dispatch failed: %s", _wt_exc)
+ 
+@@ -3726,7 +3742,8 @@ def tick(
+                 # idle ticks so orphaned stdio children from crashed jobs are reaped even when nothing is
+                 # due.
+                 logger.info("%s - No jobs due", _hermes_now().strftime('%H:%M:%S'))
+-            _sweep_mcp_orphans()
++            if not embedded:
++                _sweep_mcp_orphans()
+             return 0
+ 
+         if verbose:
+@@ -3767,10 +3784,12 @@ def tick(
+                 except Exception as exc:
+                     logger.error("Cron job future failed: %s", exc)
+                     _results.append(False)
+-            _sweep_mcp_orphans()
++            if not embedded:
++                _sweep_mcp_orphans()
+             return sum(_results)
+ 
+-        _sweep_mcp_orphans_when_all_done(_all_futures)
++        if not embedded:
++            _sweep_mcp_orphans_when_all_done(_all_futures)
+         return sum(_results)
+     finally:
+         _release_tick_lock(lock_fd)
+diff --git a/cron/scheduler_script.py b/cron/scheduler_script.py
+index 074f4fa..ffe1e09 100644
+--- a/cron/scheduler_script.py
++++ b/cron/scheduler_script.py
+@@ -328,16 +328,24 @@ def _run_job_script(
+     Optional absolute path to use as the script's cwd. When set, the subprocess runs in this directory
+     instead of the scripts-dir parent. See #69396.
+     """
+-    path, err = _resolve_script_path(script_path)
+-    if path is None:
+-        return False, err
+-    script_timeout = _get_script_timeout()
+-    argv, env_overlay, err = _script_argv(path)
+-    if argv is None:
+-        return False, err
++    from cron.execution_policy import script_input
++    approved_input = script_input(script_path, workdir, cancel_event)
++    if approved_input is None:
++        path, err = _resolve_script_path(script_path)
++        if path is None:
++            return False, err
++        script_timeout = _get_script_timeout()
++        argv, env_overlay, err = _script_argv(path)
++        if argv is None:
++            return False, err
++    else:
++        path = _sched._get_hermes_home() / "approved-script"
++        argv, env_overlay = [sys.executable, "-I", "-"], {}
++        script_timeout = 10
+ 
+     try:
+-        from tools.environments.local import build_subprocess_env
++        if approved_input is None:
++            from tools.environments.local import build_subprocess_env
+         popen_kwargs: dict[str, Any] = {"start_new_session": True}
+         if sys.platform == "win32":
+             popen_kwargs = {
+@@ -349,14 +357,16 @@ def _run_job_script(
+                 # reader threads on non-UTF-8 Windows (#45099).
+                 "encoding": "utf-8",
+                 "errors": "replace"}
+-        env = build_subprocess_env()
++        env = (build_subprocess_env() if approved_input is None else
++               {"PATH": "/usr/bin:/bin", "HOME": str(path.parent), "TZ": "UTC"})
+         env.update(env_overlay)
+         # Subprocess cwd only (default: scripts-dir parent). NEVER os.chdir() the process.
+         # Use the job's workdir as the subprocess cwd when configured, otherwise default to the scripts-dir
+         # parent (back-compat). NEVER mutate the Python process cwd — that would leak into concurrent
+         # gateway sessions (#69396).
+         proc = subprocess.Popen(
+-            argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
++            argv, stdin=subprocess.PIPE if approved_input is not None else None,
++            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+             cwd=workdir or str(path.parent), env=env, **popen_kwargs)
+         deadline = time.monotonic() + script_timeout
+         while True:
+@@ -378,7 +388,9 @@ def _run_job_script(
+                 # tree-kill (#85147, d6a5cb9725).
+                 return False, f"Script timed out after {script_timeout}s: {path}"
+             try:
+-                stdout_raw, stderr_raw = proc.communicate(timeout=min(0.1, remaining))
++                stdin_text, approved_input = approved_input, None
++                stdout_raw, stderr_raw = proc.communicate(
++                    input=stdin_text, timeout=min(0.1, remaining))
+                 break
+             except subprocess.TimeoutExpired:
+                 continue
+diff --git a/cron/execution_policy.py b/cron/execution_policy.py
+new file mode 100755
+index 0000000..43c06b2
+--- /dev/null
++++ b/cron/execution_policy.py
+@@ -0,0 +1,274 @@
++"""Opt-in embedded cron authorization. Scheduling and claims remain Hermes-owned.
++
++The trusted host registers one policy per profile before starting the ticker.
++Required profiles support only local, in-process, audited no-agent scripts.
++This is an application boundary, not a sandbox for hostile same-user code.
++"""
++from __future__ import annotations
++
++import contextvars
++import functools
++import hashlib
++import json
++import math
++import os
++import threading
++import time
++from dataclasses import dataclass
++from pathlib import Path
++from typing import ContextManager, Protocol
++
++import yaml
++
++
++class AuthorizationDenied(RuntimeError):
++    """A required execution did not acquire exact authority."""
++
++
++@dataclass(frozen=True)
++class ExecutionRequest:
++    profile_home: Path
++    job_json: str
++    execution_id: str
++    fingerprint: str
++
++
++@dataclass(frozen=True)
++class ExecutionLease:
++    fingerprint: str
++    script: bytes
++    expires_at: float  # monotonic deadline, checked before script admission
++
++
++class ExecutionPolicy(Protocol):
++    def acquire(self, request: ExecutionRequest) -> ContextManager[ExecutionLease]: ...
++
++
++@dataclass
++class _Active:
++    request: ExecutionRequest
++    lease: ExecutionLease
++    job_started: bool = False
++    script_started: bool = False
++
++
++_lock = threading.RLock()
++_policies: dict[Path, tuple[str, bytes, ExecutionPolicy]] = {}
++_faulted: set[Path] = set()
++_active: contextvars.ContextVar[_Active | None] = contextvars.ContextVar(
++    "cron_execution_lease", default=None)
++
++
++def _home() -> Path:
++    from hermes_constants import get_hermes_home
++    return get_hermes_home().resolve()
++
++
++class _ConfigLoader(yaml.SafeLoader):
++    def construct_mapping(self, node, deep=False):
++        keys = [self.construct_object(key, deep=deep) for key, _ in node.value]
++        if len(keys) != len(set(keys)):
++            raise ValueError("duplicate config key")
++        return super().construct_mapping(node, deep=deep)
++
++
++def _config(home: Path) -> tuple[str | None, bytes]:
++    try:
++        path = home / "config.yaml"
++        raw = path.read_bytes() if path.exists() else b""
++        config = yaml.load(raw, Loader=_ConfigLoader) or {}
++        if not isinstance(config, dict):
++            raise ValueError
++        cron = config.get("cron", {})
++        if not isinstance(cron, dict):
++            raise ValueError
++        name = cron.get("execution_policy")
++        if name is not None and (not isinstance(name, str) or not name.strip()):
++            raise ValueError
++        return name, raw
++    except Exception as exc:
++        raise AuthorizationDenied("authorization_config_invalid") from exc
++
++
++def register_execution_policy(home: Path, policy_id: str, policy: ExecutionPolicy) -> None:
++    home = Path(home).resolve()
++    name, raw = _config(home)
++    if (not isinstance(policy_id, str) or not policy_id or name != policy_id
++            or not callable(getattr(policy, "acquire", None))):
++        raise AuthorizationDenied("authorization_registration_invalid")
++    with _lock:
++        if home in _policies:
++            raise AuthorizationDenied("authorization_already_registered")
++        _policies[home] = (policy_id, raw, policy)
++
++
++def resolve_policy() -> ExecutionPolicy | None:
++    home = _home()
++    name, raw = _config(home)
++    with _lock:
++        installed = _policies.get(home)
++        if home in _faulted:
++            raise AuthorizationDenied("authorization_runtime_faulted")
++    if installed is not None:
++        if (name, raw) != installed[:2]:
++            raise AuthorizationDenied("authorization_config_changed")
++        return installed[2]
++    if name is not None:
++        raise AuthorizationDenied("authorization_policy_unavailable")
++    return None
++
++
++def _json(job: dict) -> str:
++    return json.dumps(job, sort_keys=True, separators=(",", ":"), allow_nan=False)
++
++
++def _validate(job: dict, extra_prompt) -> None:
++    allowed = set("""id name prompt skills skill model provider base_url provider_snapshot
++        model_snapshot script no_agent monitor_script monitor_url monitor_state context_from
++        schedule schedule_display repeat enabled state paused_at paused_reason created_at
++        next_run_at last_run_at last_status last_error last_delivery_error
++        last_delivery_unverified failure_streak deliver origin enabled_toolsets workdir
++        attach_to_session reasoning_effort failure_deliver fire_claim run_claim
++        execution_id _scheduled_instant manual_run_prompt manual_run_at
++        preflight_alerted last_fire_error last_delivery_queued""".split())
++    if set(job) - allowed:
++        raise AuthorizationDenied("authorization_unknown_field")
++    if (job.get("no_agent") is not True or job.get("deliver") != "local"
++            or job.get("failure_deliver") != "local" or extra_prompt is not None
++            or not isinstance(job.get("script"), str) or not job["script"]):
++        raise AuthorizationDenied("authorization_job_shape")
++    forbidden = (
++        "origin", "skills", "skill", "model", "provider", "base_url",
++        "provider_snapshot", "model_snapshot", "monitor_script", "monitor_url",
++        "monitor_state", "context_from", "workdir", "enabled_toolsets",
++        "attach_to_session", "reasoning_effort", "manual_run_prompt",
++    )
++    if any(job.get(key) not in (None, [], False, "") for key in forbidden):
++        raise AuthorizationDenied("authorization_forbidden_field")
++
++
++def active_lease(job: dict | None = None, *, start_job: bool = False) -> _Active | None:
++    policy = resolve_policy()
++    active = _active.get()
++    if policy is None:
++        if active is not None:
++            raise AuthorizationDenied("authorization_profile_changed")
++        return None
++    if (active is None or active.request.profile_home != _home()
++            or (job is not None and _json(job) != active.request.job_json)):
++        raise AuthorizationDenied("authorization_lease_missing")
++    if start_job:
++        if active.job_started:
++            raise AuthorizationDenied("authorization_replay")
++        active.job_started = True
++    return active
++
++
++def script_input(script_path: str, workdir, cancel_event) -> str | None:
++    active = active_lease()
++    if active is None:
++        return None
++    job = json.loads(active.request.job_json)
++    if (not active.job_started or active.script_started or workdir is not None
++            or script_path != job["script"]
++            or time.monotonic() >= active.lease.expires_at
++            or (cancel_event is not None and cancel_event.is_set())):
++        raise AuthorizationDenied("authorization_script_denied")
++    active.script_started = True
++    return active.lease.script.decode("utf-8")
++
++
++def _deny(job: dict) -> None:
++    from cron.executions import finish_execution
++    from cron.jobs import fire_claim_fence, pause_job, update_job
++    owner = (job.get("fire_claim") or {}).get("by")
++    if owner:
++        with fire_claim_fence(job["id"], expected_owner=owner) as owns:
++            if owns:
++                pause_job(job["id"], reason="authorization_denied")
++                update_job(job["id"], {"fire_claim": None, "run_claim": None})
++    if not finish_execution(job["execution_id"], success=False,
++                            error="authorization_denied", delivery_outcome="suppressed"):
++        raise AuthorizationDenied("authorization_attempt_not_owned")
++
++
++def authorize_execution(function):
++    """Gate the shared entry, never serialize leases into detached payloads."""
++    def execute(job, *args, **kwargs):
++        # Resolution errors propagate before any external launch or execution.
++        policy = resolve_policy()
++        if policy is None:
++            return function(job, *args, **kwargs)
++        if _active.get() is not None:
++            raise AuthorizationDenied("authorization_nested_execution")
++        from cron.executions import create_execution, get_execution
++        from cron.jobs import get_job, is_job_runnable
++        snapshot = json.loads(_json(job))
++        if not snapshot.get("execution_id"):
++            snapshot["execution_id"] = create_execution(
++                snapshot["id"], source="authorized",
++                scheduled_instant=snapshot.get("_scheduled_instant"))["id"]
++        attempt = get_execution(snapshot["execution_id"])
++        if (not attempt or attempt["job_id"] != snapshot["id"]
++                or attempt["status"] != "claimed" or attempt["pid"] != os.getpid()):
++            raise AuthorizationDenied("authorization_attempt_invalid")
++        entered = False
++        try:
++            _validate(snapshot, kwargs.get("extra_prompt"))
++            current = get_job(snapshot["id"])
++            if current is None or not is_job_runnable(current):
++                raise AuthorizationDenied("authorization_job_inactive")
++            # Claims/occurrence metadata are attached by Hermes; all persisted
++            # fields must still match the claimed snapshot before host approval.
++            if any(snapshot.get(k) != v for k, v in current.items()):
++                raise AuthorizationDenied("authorization_job_changed")
++            raw = _json(snapshot)
++            fingerprint = hashlib.sha256((_home().as_posix() + raw).encode()).hexdigest()
++            request = ExecutionRequest(_home(), raw, snapshot["execution_id"], fingerprint)
++            with policy.acquire(request) as lease:
++                if (type(lease) is not ExecutionLease or lease.fingerprint != fingerprint
++                        or type(lease.script) is not bytes or not 0 < len(lease.script) <= 65536
++                        or not isinstance(lease.expires_at, (int, float))
++                        or not math.isfinite(lease.expires_at)
++                        or not time.monotonic() < lease.expires_at):
++                    raise AuthorizationDenied("authorization_lease_invalid")
++                lease.script.decode("utf-8")
++                resolve_policy()
++                current = get_job(snapshot["id"])
++                if (current is None or not is_job_runnable(current)
++                        or any(snapshot.get(k) != v for k, v in current.items())):
++                    raise AuthorizationDenied("authorization_job_changed")
++                if kwargs.get("cancel_event") is not None and kwargs["cancel_event"].is_set():
++                    raise AuthorizationDenied("authorization_cancelled")
++                token = _active.set(_Active(request, lease))
++                try:
++                    entered = True
++                    result = function(snapshot, *args, **kwargs)
++                    if result is False:
++                        with _lock:
++                            _faulted.add(request.profile_home)
++                    return result
++                finally:
++                    _active.reset(token)
++        except Exception as exc:
++            if not entered:
++                try:
++                    _deny(snapshot)
++                except BaseException:
++                    with _lock:
++                        _faulted.add(_home())
++                    raise
++                raise AuthorizationDenied("authorization_denied") from exc
++            raise
++    @functools.wraps(function)
++    def wrapped(job, *args, **kwargs):
++        try:
++            return execute(job, *args, **kwargs)
++        except AuthorizationDenied:
++            raise
++        except BaseException:
++            with _lock:
++                if _home() in _policies:
++                    _faulted.add(_home())
++            raise
++    return wrapped

@@ -165,6 +165,75 @@ struct ContentView: View {
         }
       }
 
+      GroupBox("Schedules") {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack {
+            Text(viewModel.automationMessage)
+              .font(.caption)
+              .foregroundStyle(automationColor)
+            Spacer()
+            Button("Refresh") { Task { await viewModel.refreshAutomation() } }
+            Button("Stop All", role: .destructive) { viewModel.stopAllAutomation() }
+              .disabled(viewModel.isWorking)
+          }
+          HStack {
+            TextField("Reminder name", text: $viewModel.reminderName)
+              .frame(minWidth: 160)
+            Picker("Kind", selection: $viewModel.reminderRecurring) {
+              Text("One-time").tag(false)
+              Text("Recurring").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+            TextField("Delay or interval, e.g. 5m", text: $viewModel.reminderScheduleText)
+              .frame(width: 170)
+            TextField("Note", text: $viewModel.reminderNote)
+            Button("Create Paused") { viewModel.createReminder() }
+              .disabled(viewModel.isWorking)
+          }
+          if viewModel.schedules.isEmpty {
+            Text("No schedules.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          } else {
+            List(viewModel.schedules) { schedule in
+              VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                  Text(schedule.name).font(.headline)
+                  Text(schedule.state)
+                    .font(.caption.bold())
+                    .foregroundStyle(schedule.enabled ? .green : .orange)
+                  Spacer()
+                  Button("Activate") { viewModel.activateReminder(schedule) }
+                    .disabled(schedule.enabled || viewModel.isWorking)
+                  Button("Pause") { viewModel.pauseReminder(schedule) }
+                    .disabled(!schedule.enabled || viewModel.isWorking)
+                  Button("Remove", role: .destructive) { viewModel.removeReminder(schedule) }
+                    .disabled(viewModel.isWorking)
+                }
+                Text(schedule.scheduleDisplay)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                Text(scheduleStatus(schedule))
+                  .font(.caption.monospaced())
+                  .foregroundStyle(.secondary)
+              }
+            }
+            .frame(minHeight: 120, maxHeight: 170)
+          }
+          if !viewModel.scheduleHistory.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Execution history").font(.caption.bold())
+              ForEach(viewModel.scheduleHistory.prefix(6)) { item in
+                Text(historyText(item))
+                  .font(.caption.monospaced())
+                  .textSelection(.enabled)
+              }
+            }
+          }
+        }
+      }
+
       GroupBox("Recent safe activity") {
         List(viewModel.activity) { item in
           HStack {
@@ -184,6 +253,13 @@ struct ContentView: View {
         challenge: challenge,
         approve: { viewModel.approve(challenge) },
         reject: { viewModel.reject(challenge) }
+      )
+    }
+    .sheet(item: $viewModel.pendingAutomationConsent) { challenge in
+      ConsentSheet(
+        challenge: challenge,
+        approve: { viewModel.approveAutomation(challenge) },
+        reject: { viewModel.rejectAutomation(challenge) }
       )
     }
   }
@@ -226,9 +302,27 @@ struct ContentView: View {
       && !status.wake.active && !viewModel.isWorking
   }
 
+  private var automationColor: Color {
+    guard let status = viewModel.automationStatus else { return .secondary }
+    if status.stopped { return .red }
+    if !status.available || !status.schedulerEnabled { return .orange }
+    return .green
+  }
+
   private func voiceEventText(_ event: VoiceEvent) -> String {
     let value = event.text ?? event.status ?? event.code ?? ""
     return "#\(event.sequence) \(event.kind): \(value)"
+  }
+
+  private func scheduleStatus(_ schedule: AutomationSchedule) -> String {
+    let next = schedule.nextRunAt ?? "no next run"
+    let last = schedule.lastStatus ?? "no history"
+    return "\(schedule.id) | next: \(next) | last: \(last)"
+  }
+
+  private func historyText(_ item: AutomationExecution) -> String {
+    let when = item.finishedAt ?? item.startedAt ?? item.claimedAt ?? "unknown time"
+    return "\(when) \(item.jobID) \(item.status)"
   }
 }
 

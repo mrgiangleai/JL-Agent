@@ -193,6 +193,25 @@ Hermes' Sherpa KWS engine.
 
 ## External component rule
 
+Phase 6's authorization checkpoint adds an inert `AutomationRuntime` to the
+foreground composition. In an explicitly prepared worker, its production
+policy binds exact JL grants to the reviewed Hermes execution hook. Hermes
+continues to own job storage, schedules, claims and execution history; JL owns
+only grants and replay-prevention receipts. The main runtime does not bind or
+start cron. The separately invoked `HermesSchedulerService` now delegates to
+Hermes' built-in scheduler after verifying internal APFS and JL policy binding.
+It issues no grants, stops on faults and persists global stop on shutdown.
+One authorized local service smoke passed; the worker is now stopped. The
+native app uses a narrow authenticated automation IPC adapter for schedule
+management. That adapter calls Hermes' job/history APIs inside the profile
+scope and never implements its own scheduler. Activation is still exact,
+signed, short-lived native consent; the runtime issues and immediately consumes
+the one-time approval before resuming the Hermes job. Created jobs are paused,
+fixed local `no_agent` reminders only. No provider, MCP, network monitor,
+external messaging or autonomous tool path is exposed. See
+`PHASE6_NATIVE_UI_VALIDATION.md` and
+`PHASE6_SCHEDULER_LIVE_VALIDATION.md` for the current validated boundary.
+
 An external component may integrate only through an adapter, MCP, API,
 subprocess, or a reviewed Hermes plugin. It cannot directly modify unrelated
 Hermes internals. Copying code requires a documented gap, license/NOTICE

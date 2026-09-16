@@ -30,6 +30,7 @@ from .request_state import RequestLifecycle, RequestState
 from .router import RoutingError
 
 if TYPE_CHECKING:
+    from .automation_management import AutomationConsentRequestHandler
     from .execution import AuthenticatedExecutionContext, ExecutionGate
 
 
@@ -356,14 +357,20 @@ class TrustedConsentRequestHandler:
         approvals: OneTimeApprovalStore,
         control_plane: JLControlPlane,
         execution_gate: ExecutionGate,
+        automation_handler: AutomationConsentRequestHandler | None = None,
     ) -> None:
         self.coordinator = coordinator
         self.verifier = verifier
         self.approvals = approvals
         self.control_plane = control_plane
         self.execution_gate = execution_gate
+        self.automation_handler = automation_handler
 
     def __call__(self, envelope: IPCRequestEnvelope) -> IPCResponseEnvelope:
+        if self.automation_handler is not None:
+            response = self.automation_handler(envelope)
+            if response is not None:
+                return response
         if envelope.operation != "consent-decision":
             return _failure(envelope, "unsupported_operation")
         if not self.verifier.available:

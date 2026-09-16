@@ -14,9 +14,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .automation_runtime import AutomationRuntime
 from .control.approvals import OneTimeApprovalStore
 from .control.audit import AuditLedger
 from .control.auth import FileCredentialProvider
+from .control.automation_management import (
+    AutomationConsentRequestHandler,
+    AutomationManager,
+    AutomationRequestHandler,
+)
 from .control.codec import decode_control_request
 from .control.computer_use import (
     ComputerUseExecutionReadiness,
@@ -157,12 +163,16 @@ class JLRuntimeService:
         consent_server: UnixSocketServer | None = None,
         consent_available: bool = False,
         voice_shutdown: Callable[[], None] | None = None,
+        automation: AutomationRuntime | None = None,
+        automation_manager: AutomationManager | None = None,
     ) -> None:
         self.paths = paths
         self.server = server
         self.consent_server = consent_server
         self.consent_available = consent_available
         self.voice_shutdown = voice_shutdown
+        self.automation = automation
+        self.automation_manager = automation_manager
         self._consent_thread: threading.Thread | None = None
         self._readiness_identity: tuple[int, int] | None = None
 
@@ -188,6 +198,17 @@ class JLRuntimeService:
         self.server.serve_forever()
 
     def shutdown(self) -> None:
+        automation_error: Exception | None = None
+        if self.automation is not None:
+            try:
+                self.automation.shutdown()
+            except Exception as error:
+                automation_error = error
+        if self.automation_manager is not None:
+            try:
+                self.automation_manager.close()
+            except Exception as error:
+                automation_error = error
         self.server.shutdown()
         if self.consent_server is not None:
             self.consent_server.shutdown()
@@ -198,6 +219,8 @@ class JLRuntimeService:
         if self.voice_shutdown is not None:
             self.voice_shutdown()
         self._remove_readiness()
+        if automation_error is not None:
+            raise automation_error
 
     def __enter__(self) -> JLRuntimeService:
         self.start()
@@ -322,6 +345,19 @@ def build_runtime_service(
         activation_approved=voice_activation_approved_from_environment(),
         wake_phrase_path=paths.root / "wake-phrase.json",
     )
+    automation_runtime = AutomationRuntime(
+        root / "upstream" / "hermes-agent",
+        paths.root / "automation",
+        approvals,
+    )
+    automation_manager = AutomationManager(
+        upstream=root / "upstream" / "hermes-agent",
+        home=paths.root / "automation",
+        approvals=approvals,
+    )
+    automation_handler = AutomationRequestHandler(
+        automation_manager, lambda: automation_runtime.scheduler_enabled
+    )
 
     def runtime_status() -> dict[str, object]:
         computer_use = computer_use_probe.inspect()
@@ -347,6 +383,9 @@ def build_runtime_service(
             "consent_key_fingerprint": verifier.key_fingerprint,
             "consent_enrollment_current": consent_enrollment_current,
             "computer_use": execution_readiness.as_dict(),
+            "automation": automation_manager.status(
+                scheduler_enabled=automation_runtime.scheduler_enabled
+            ),
         }
 
     handler = SecureControlRequestHandler(
@@ -359,6 +398,7 @@ def build_runtime_service(
         status_provider=runtime_status,
         activity_reader=audit.safe_activity,
         voice_handler=voice.handle,
+        automation_handler=automation_handler,
     )
     consent_handler = TrustedConsentRequestHandler(
         coordinator=consent,
@@ -366,6 +406,9 @@ def build_runtime_service(
         approvals=approvals,
         control_plane=control_plane,
         execution_gate=gate,
+        automation_handler=AutomationConsentRequestHandler(
+            automation_manager, verifier
+        ),
     )
     return JLRuntimeService(
         paths=paths,
@@ -373,6 +416,8 @@ def build_runtime_service(
         consent_server=UnixSocketServer(paths.consent_socket, consent_handler),
         consent_available=verifier.available,
         voice_shutdown=voice.shutdown,
+        automation=automation_runtime,
+        automation_manager=automation_manager,
     )
 
 

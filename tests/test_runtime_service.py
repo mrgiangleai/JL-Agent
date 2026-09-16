@@ -7,6 +7,7 @@ import socket
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from jl_agent.control.auth import FileCredentialProvider
 from jl_agent.runtime_service import (
@@ -37,6 +38,17 @@ class FakeServer:
 
 
 class RuntimeServiceLifecycleTests(unittest.TestCase):
+    def test_automation_fault_does_not_prevent_service_shutdown(self) -> None:
+        automation = Mock()
+        automation.shutdown.side_effect = RuntimeError("authority unavailable")
+        self.service.automation = automation
+        try:
+            with self.assertRaises(RuntimeError):
+                self.service.shutdown()
+            self.assertTrue(self.server.stopped)
+        finally:
+            self.service.automation = None
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.paths = RuntimePaths.user_local(Path(self.temporary.name) / "runtime")
@@ -78,6 +90,11 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
         )
         self.assertEqual(composed.server.family.name, "AF_UNIX")
         self.assertEqual(composed.paths.socket.parent, composed.paths.root)
+        self.assertIsNotNone(composed.automation)
+        assert composed.automation is not None
+        self.assertFalse(composed.automation.scheduler_enabled)
+        self.assertIsNone(composed.automation.authority)
+        self.assertFalse(composed.automation.home.exists())
         self.assertTrue(composed.paths.credential.exists())
         self.assertTrue(composed.paths.audit.exists())
         self.assertIsNotNone(composed.server.handler.voice_handler)  # type: ignore[attr-defined]

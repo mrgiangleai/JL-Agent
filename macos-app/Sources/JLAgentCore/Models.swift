@@ -67,6 +67,7 @@ public struct RuntimeStatus: Equatable, Sendable {
   public let consentKeyFingerprint: String?
   public let consentEnrollmentCurrent: Bool
   public let computerUse: ComputerUseStatus
+  public let automation: AutomationStatus
 
   init(result: [String: JSONValue]) throws {
     guard
@@ -77,7 +78,8 @@ public struct RuntimeStatus: Equatable, Sendable {
       let revision = result["hermes_revision"]?.stringValue,
       let consent = result["consent_available"]?.boolValue,
       let consentEnrollmentCurrent = result["consent_enrollment_current"]?.boolValue,
-      let computerUse = result["computer_use"]?.objectValue
+      let computerUse = result["computer_use"]?.objectValue,
+      let automation = result["automation"]?.objectValue
     else {
       throw RuntimeClientError.malformedResponse
     }
@@ -90,6 +92,32 @@ public struct RuntimeStatus: Equatable, Sendable {
     self.consentKeyFingerprint = result["consent_key_fingerprint"]?.stringValue
     self.consentEnrollmentCurrent = consentEnrollmentCurrent
     self.computerUse = try ComputerUseStatus(value: computerUse)
+    self.automation = try AutomationStatus(value: automation)
+  }
+}
+
+public struct AutomationStatus: Equatable, Sendable {
+  public let available: Bool
+  public let schedulerEnabled: Bool
+  public let stopped: Bool
+  public let profileHome: String
+  public let mode: String
+
+  init(value: [String: JSONValue]) throws {
+    guard
+      let available = value["available"]?.boolValue,
+      let schedulerEnabled = value["scheduler_enabled"]?.boolValue,
+      let stopped = value["stopped"]?.boolValue,
+      let profileHome = value["profile_home"]?.stringValue,
+      let mode = value["mode"]?.stringValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.available = available
+    self.schedulerEnabled = schedulerEnabled
+    self.stopped = stopped
+    self.profileHome = profileHome
+    self.mode = mode
   }
 }
 
@@ -407,6 +435,79 @@ public struct ConsentChallenge: Identifiable, Equatable, Sendable {
 public enum ConsentDecision: String, Sendable {
   case approve
   case reject
+}
+
+public struct AutomationSchedule: Identifiable, Equatable, Sendable {
+  public let id: String
+  public let name: String
+  public let prompt: String
+  public let scheduleDisplay: String
+  public let enabled: Bool
+  public let state: String
+  public let nextRunAt: String?
+  public let lastRunAt: String?
+  public let lastStatus: String?
+  public let pausedReason: String?
+  public let latestExecution: AutomationExecution?
+
+  init(value: JSONValue) throws {
+    guard
+      let item = value.objectValue,
+      let id = item["id"]?.stringValue,
+      let name = item["name"]?.stringValue,
+      let prompt = item["prompt"]?.stringValue,
+      let scheduleDisplay = item["schedule_display"]?.stringValue,
+      let enabled = item["enabled"]?.boolValue,
+      let state = item["state"]?.stringValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.id = id
+    self.name = name
+    self.prompt = prompt
+    self.scheduleDisplay = scheduleDisplay
+    self.enabled = enabled
+    self.state = state
+    self.nextRunAt = item["next_run_at"]?.stringValue
+    self.lastRunAt = item["last_run_at"]?.stringValue
+    self.lastStatus = item["last_status"]?.stringValue
+    self.pausedReason = item["paused_reason"]?.stringValue
+    if let latest = item["latest_execution"], latest != .null {
+      self.latestExecution = try AutomationExecution(value: latest)
+    } else {
+      self.latestExecution = nil
+    }
+  }
+}
+
+public struct AutomationExecution: Identifiable, Equatable, Sendable {
+  public let id: String
+  public let jobID: String
+  public let status: String
+  public let claimedAt: String?
+  public let startedAt: String?
+  public let finishedAt: String?
+  public let scheduledInstant: String?
+  public let error: String?
+
+  init(value: JSONValue) throws {
+    guard
+      let item = value.objectValue,
+      let id = item["id"]?.stringValue,
+      let jobID = item["job_id"]?.stringValue,
+      let status = item["status"]?.stringValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.id = id
+    self.jobID = jobID
+    self.status = status
+    self.claimedAt = item["claimed_at"]?.stringValue
+    self.startedAt = item["started_at"]?.stringValue
+    self.finishedAt = item["finished_at"]?.stringValue
+    self.scheduledInstant = item["scheduled_instant"]?.stringValue
+    self.error = item["error"]?.stringValue
+  }
 }
 
 public struct RequestDraft: Equatable, Sendable {

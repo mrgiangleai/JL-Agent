@@ -91,6 +91,7 @@ RequestDecoder = Callable[[IPCRequestEnvelope], ControlRequest]
 StatusProvider = Callable[[], Mapping[str, Any]]
 ActivityReader = Callable[[int], tuple[Mapping[str, Any], ...]]
 VoiceHandler = Callable[[str, Mapping[str, Any], str, str], Mapping[str, object]]
+AutomationHandler = Callable[[IPCRequestEnvelope], IPCResponseEnvelope]
 
 
 class SecureControlRequestHandler:
@@ -108,6 +109,7 @@ class SecureControlRequestHandler:
         status_provider: StatusProvider | None = None,
         activity_reader: ActivityReader | None = None,
         voice_handler: VoiceHandler | None = None,
+        automation_handler: AutomationHandler | None = None,
     ) -> None:
         self.credentials = credentials
         self.approvals = approvals
@@ -118,6 +120,7 @@ class SecureControlRequestHandler:
         self.status_provider = status_provider
         self.activity_reader = activity_reader
         self.voice_handler = voice_handler
+        self.automation_handler = automation_handler
 
     def __call__(self, envelope: IPCRequestEnvelope) -> IPCResponseEnvelope:
         lifecycle = RequestLifecycle(envelope.request_id)
@@ -183,6 +186,11 @@ class SecureControlRequestHandler:
                 )
                 return self._failure(envelope, lifecycle, code)
             return IPCResponseEnvelope.success(envelope.request_id, result)
+        if envelope.operation.startswith("automation-"):
+            if self.automation_handler is None:
+                lifecycle.transition(RequestState.FAILED)
+                return self._failure(envelope, lifecycle, "automation_unavailable")
+            return self.automation_handler(envelope)
         if envelope.operation not in {"prepare", "execute"}:
             lifecycle.transition(RequestState.FAILED)
             return self._failure(envelope, lifecycle, "unsupported_operation")

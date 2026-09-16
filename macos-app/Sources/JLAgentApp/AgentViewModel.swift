@@ -23,6 +23,15 @@ final class AgentViewModel: ObservableObject {
   @Published var voiceStatus: VoiceStatus?
   @Published var voiceEvents: [VoiceEvent] = []
   @Published var voiceMessage = "Voice is off by default."
+  @Published var automationStatus: AutomationStatus?
+  @Published var schedules: [AutomationSchedule] = []
+  @Published var scheduleHistory: [AutomationExecution] = []
+  @Published var automationMessage = "Scheduler status has not been checked."
+  @Published var reminderName = "Local reminder"
+  @Published var reminderNote = "JL reminder"
+  @Published var reminderScheduleText = "5m"
+  @Published var reminderRecurring = false
+  @Published var pendingAutomationConsent: ConsentChallenge?
   @Published var wakePhraseDraft = "HEY J L"
   @Published var testedWakePhrase: String?
   @Published var wakePhraseMessage = "Test a phrase before making it the default."
@@ -41,6 +50,7 @@ final class AgentViewModel: ObservableObject {
   private var activeRequestID: String?
   private var activeDraft: RequestDraft?
   private var pendingConsentDeadline: ContinuousClock.Instant?
+  private var pendingAutomationConsentDeadline: ContinuousClock.Instant?
   private var initialized = false
 
   init(paths: RuntimePaths = RuntimePaths()) {
@@ -75,6 +85,7 @@ final class AgentViewModel: ObservableObject {
         apply(observed.0, localConsentFingerprint: observed.1)
         await refreshActivity()
         await refreshVoice()
+        await refreshAutomation()
       } catch {
         apply(error)
       }
@@ -97,6 +108,7 @@ final class AgentViewModel: ObservableObject {
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
         await refreshVoice()
+        await refreshAutomation()
       } catch {
         apply(error)
       }
@@ -234,6 +246,176 @@ final class AgentViewModel: ObservableObject {
       }
     } catch {
       voiceMessage = display(error)
+    }
+  }
+
+  func refreshAutomation() async {
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    do {
+      let status = try await Task.detached {
+        try client.automationStatus(callerID: callerID, sessionID: sessionID)
+      }.value
+      let schedules = try await Task.detached {
+        try client.automationSchedules(callerID: callerID, sessionID: sessionID)
+      }.value
+      let history = try await Task.detached {
+        try client.automationHistory(callerID: callerID, sessionID: sessionID)
+      }.value
+      automationStatus = status
+      self.schedules = schedules
+      scheduleHistory = history
+      automationMessage = Self.automationSummary(status)
+    } catch {
+      automationMessage = display(error)
+    }
+  }
+
+  func createReminder() {
+    guard !isWorking else { return }
+    let schedule = reminderRecurring
+      ? "every \(reminderScheduleText)"
+      : "in \(reminderScheduleText)"
+    let name = reminderName
+    let note = reminderNote
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    isWorking = true
+    Task {
+      do {
+        _ = try await Task.detached {
+          try client.createAutomationReminder(
+            name: name,
+            schedule: schedule,
+            note: note,
+            callerID: callerID,
+            sessionID: sessionID
+          )
+        }.value
+        automationMessage = "Reminder created paused. Activate it with exact confirmation."
+        isWorking = false
+        await refreshAutomation()
+      } catch {
+        automationMessage = display(error)
+        isWorking = false
+      }
+    }
+  }
+
+  func activateReminder(_ schedule: AutomationSchedule) {
+    guard !isWorking else { return }
+    let requestID = UUID().uuidString.lowercased()
+    let jobID = schedule.id
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    isWorking = true
+    Task {
+      do {
+        let challenge = try await Task.detached {
+          try client.requestAutomationActivation(
+            jobID: jobID,
+            requestID: requestID,
+            callerID: callerID,
+            sessionID: sessionID
+          )
+        }.value
+        pendingAutomationConsentDeadline = ConsentExpiryPolicy.deadline(
+          receivedAt: consentClock.now,
+          expiresInSeconds: challenge.expiresInSeconds
+        )
+        pendingAutomationConsent = challenge
+        automationMessage = "Exact activation confirmation is required."
+      } catch {
+        automationMessage = display(error)
+      }
+      isWorking = false
+    }
+  }
+
+  func approveAutomation(_ challenge: ConsentChallenge) {
+    decideAutomation(challenge, decision: .approve)
+  }
+
+  func rejectAutomation(_ challenge: ConsentChallenge) {
+    decideAutomation(challenge, decision: .reject)
+  }
+
+  func pauseReminder(_ schedule: AutomationSchedule) {
+    guard !isWorking else { return }
+    let jobID = schedule.id
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    isWorking = true
+    Task {
+      do {
+        _ = try await Task.detached {
+          try client.pauseAutomationReminder(
+            jobID: jobID,
+            callerID: callerID,
+            sessionID: sessionID
+          )
+        }.value
+        automationMessage = "Reminder paused and authorization revoked."
+        isWorking = false
+        await refreshAutomation()
+      } catch {
+        automationMessage = display(error)
+        isWorking = false
+      }
+    }
+  }
+
+  func removeReminder(_ schedule: AutomationSchedule) {
+    guard !isWorking else { return }
+    let jobID = schedule.id
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    isWorking = true
+    Task {
+      do {
+        _ = try await Task.detached {
+          try client.removeAutomationReminder(
+            jobID: jobID,
+            callerID: callerID,
+            sessionID: sessionID
+          )
+        }.value
+        automationMessage = "Reminder removed."
+        isWorking = false
+        await refreshAutomation()
+      } catch {
+        automationMessage = display(error)
+        isWorking = false
+      }
+    }
+  }
+
+  func stopAllAutomation() {
+    guard !isWorking else { return }
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    isWorking = true
+    Task {
+      do {
+        automationStatus = try await Task.detached {
+          try client.stopAllAutomation(
+            callerID: callerID,
+            sessionID: sessionID
+          )
+        }.value
+        automationMessage = "All schedules stopped. Scheduler remains stopped."
+        isWorking = false
+        await refreshAutomation()
+      } catch {
+        automationMessage = display(error)
+        isWorking = false
+      }
     }
   }
 
@@ -377,6 +559,50 @@ final class AgentViewModel: ObservableObject {
     }
   }
 
+  private func decideAutomation(
+    _ challenge: ConsentChallenge,
+    decision consentDecision: ConsentDecision
+  ) {
+    guard !isWorking else { return }
+    guard let deadline = pendingAutomationConsentDeadline,
+      !ConsentExpiryPolicy.isExpired(deadline: deadline, now: consentClock.now)
+    else {
+      pendingAutomationConsent = nil
+      pendingAutomationConsentDeadline = nil
+      automationMessage = "consent_expired: request activation again."
+      return
+    }
+    pendingAutomationConsent = nil
+    pendingAutomationConsentDeadline = nil
+    isWorking = true
+    let signer = signer
+    let client = client
+    Task {
+      do {
+        let state = try await Task.detached {
+          let signature = try signer.sign(
+            challenge: challenge,
+            decision: consentDecision
+          )
+          return try client.submitAutomationConsent(
+            challenge: challenge,
+            decision: consentDecision,
+            signature: signature
+          )
+        }.value
+        automationMessage =
+          consentDecision == .reject
+          ? "Activation rejected. Reminder stayed paused."
+          : "Activation \(state)."
+        isWorking = false
+        await refreshAutomation()
+      } catch {
+        automationMessage = display(error)
+        isWorking = false
+      }
+    }
+  }
+
   private func executeActiveRequest() async {
     guard let requestID = activeRequestID, var observedDraft = activeDraft else {
       handleRequestError(RuntimeClientError.invalidRequest("Prepared request was lost"))
@@ -407,6 +633,7 @@ final class AgentViewModel: ObservableObject {
   private func apply(_ status: RuntimeStatus, localConsentFingerprint: String) {
     runtimePID = status.runtimePID
     computerUseStatus = status.computerUse
+    automationStatus = status.automation
     consentIdentityMatches =
       status.consentEnrollmentCurrent
       && status.consentKeyFingerprint == localConsentFingerprint
@@ -426,6 +653,7 @@ final class AgentViewModel: ObservableObject {
     if !RuntimeStatusSnapshotPolicy.shouldRetain(after: error) {
       runtimePID = nil
       computerUseStatus = nil
+      automationStatus = nil
       consentIdentityMatches = false
     }
     if case RuntimeClientError.server(let code, _) = error,
@@ -500,5 +728,18 @@ final class AgentViewModel: ObservableObject {
       return "Wake word armed: \(status.wake.phrase ?? "configured phrase")."
     }
     return "Voice is ready but not listening. Tools are disabled."
+  }
+
+  private static func automationSummary(_ status: AutomationStatus) -> String {
+    if status.stopped {
+      return "Scheduler is stopped. Use Stop All only for shutdown; restart runtime to clear it."
+    }
+    if !status.available {
+      return "Scheduler storage is unavailable."
+    }
+    if !status.schedulerEnabled {
+      return "Scheduler service is disabled. Schedules can be managed but will not run."
+    }
+    return "Scheduler service is enabled for fixed local no-agent reminders."
   }
 }

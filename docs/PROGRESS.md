@@ -1,6 +1,59 @@
-# Phase 5 progress
+# JL Agent progress
 
-Last updated: 2026-09-15 ICT
+Last updated: 2026-09-16 ICT
+
+## Phase 6 current state
+
+- Phase 6 is complete for the approved minimal automation scope. See
+  `PHASE6_REPORT.md` and `PHASE6_HANDOFF.md`.
+- Native UI checkpoint passed for the validated backend surface: schedules list,
+  paused creation, signed exact activation, pause/resume/remove, history/status,
+  and global Stop All are exposed in the SwiftUI app.
+- A narrow authenticated automation IPC adapter now wraps Hermes job/history
+  APIs. Hermes still owns job storage, schedules, claims and execution history;
+  JL owns exact grants, consent, replay receipts and stop/revoke policy.
+- Scheduler service checkpoint passed: explicit foreground adapter uses Hermes'
+  existing scheduler with production JL per-job authorization and internal APFS.
+- One authorized local live job passed once: one script launch, one completed
+  history/occurrence, consumed activation approval and one spent receipt.
+  No retry. Service is stopped and global stop is persisted.
+- Latest validation: 177 Python tests, 18 native contract tests, release app
+  build/sign, bounded GUI smoke, Ruff, ty and dependency checks pass. Hermes pin
+  and reviewed three-file patch are unchanged.
+- Important upgrade note: Hermes remains pinned at
+  `044a77b3b6af4ce16138d42762f812a20b9f7a89`, while the worktree intentionally
+  carries the three-file patch archived in `PHASE6_UPSTREAM.patch`. Future
+  Hermes upgrades must re-audit and rebase this patch first.
+
+### Prior authorization checkpoint
+
+- Production authority implemented exact consent, durable grants, replay
+  protection, expiry/revoke/global stop and restart recovery. Its 168-test
+  checkpoint is recorded in `PHASE6_AUTHORIZATION_VALIDATION.md`.
+
+### Prior hook checkpoint
+
+- Latest checkpoint: internal APFS persistence/duplicate/process-restart probe
+  passed before upstream modification. The explicitly approved three-file
+  Hermes hook patch now passes 147 deterministic JL tests (21 new hook tests).
+- Stopped for upstream diff review before runtime activation or UI. Hermes HEAD
+  remains pinned, with an intentional uncommitted three-file patch. See
+  `PHASE6_HOOK_VALIDATION.md` and `PHASE6_UPSTREAM.patch`.
+
+### Earlier feasibility checkpoint (superseded by approved hook patch)
+
+- Scope approved in `PHASE6_PROPOSAL.md`; sequential step 1 stopped at the
+  supported integration feasibility gate. Phase 6 is incomplete.
+- The built-in Hermes dispatch path has no audited per-job JL authorization
+  callback. A tick-wide gate and script-internal checks cannot satisfy the
+  approved exact-job contract. Scheduler remains disabled.
+- Real project-local Hermes store probe confirms paused creation, live claim
+  exclusion, and pause persistence on reload. Occurrence-ledger lookup is
+  degraded by a SQLite readonly-database error; execution/restart/revocation
+  and GUI validation remain outstanding.
+- No Phase 5 runtime/client changes or Hermes pin changes. See
+  `PHASE6_FEASIBILITY.md` for evidence and the upstream contract requiring a
+  separate scope decision before implementation can continue.
 
 ## Phase 5 current state
 

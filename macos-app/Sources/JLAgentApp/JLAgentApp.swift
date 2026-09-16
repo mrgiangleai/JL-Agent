@@ -7,7 +7,7 @@ struct JLAgentDesktopApp: App {
   var body: some Scene {
     WindowGroup("JL Agent") {
       ContentView(viewModel: viewModel)
-        .frame(minWidth: 720, minHeight: 620)
+        .frame(minWidth: 820, minHeight: 760)
         .task { viewModel.initialize() }
     }
     .windowResizability(.contentMinSize)

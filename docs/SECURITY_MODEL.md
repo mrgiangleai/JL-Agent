@@ -118,6 +118,30 @@ export a sanitized audit summary. Raw secrets are never included in exports.
 
 ## Current implementation limitations
 
+Phase 6 automation exposes only fixed local reminder management. The native UI
+can list schedules, create paused one-time or recurring reminders, request exact
+signed activation, pause, resume through re-activation, remove, view execution
+history/status and invoke global Stop All. The runtime adapter calls Hermes'
+profile-scoped cron job/history APIs and does not implement a second scheduler.
+Created jobs are paused by default and contain only the audited `no_agent`
+script path.
+
+The internal production authority consumes trusted exact one-time approval
+before storing a bounded grant. Profile/job/configuration/script identity,
+owner/session and validity are bound. SQLite admission receipts prevent
+duplicate execution permission; unknown receipts after restart cannot be
+replayed. Revoke and global stop close new admission while reporting already
+admitted work honestly. No approval is issued by a scheduled job or exposed
+through normal IPC. Storage faults deny; this application boundary does not
+contain arbitrary same-user code. The explicit scheduler worker verifies
+internal APFS, uses only Hermes' built-in service and keeps per-job admission
+mandatory. It cannot issue approval; on shutdown it persists global stop. One
+explicitly authorized fixed local smoke passed and the worker is stopped. No
+scheduler supervisor, global resume, provider/MCP/network action, external
+messaging or autonomous tool path was added. See
+`PHASE6_NATIVE_UI_VALIDATION.md` and
+`PHASE6_SCHEDULER_LIVE_VALIDATION.md`.
+
 Phase 5 voice and wake are disabled by default and require both
 `JL_AGENT_VOICE_ENABLED=1` and
 `JL_AGENT_VOICE_ACTIVATION_APPROVED=1` before a start operation can reach

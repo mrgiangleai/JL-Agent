@@ -67,10 +67,12 @@ enum NativeContractTests {
     try voiceControlUsesAuthenticatedBoundedIPC()
     try voiceEventsRejectRawAudioFields()
     try wakePhraseSettingsUseAuthenticatedTestGate()
+    try automationUsesAuthenticatedBoundedIPC()
+    try automationConsentPayloadCannotCarryWildcardApproval()
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     try missingEnrolledConsentKeyRequiresExplicitRotation()
-    print("16 native contract tests passed")
+    print("18 native contract tests passed")
   }
 
   private static func voiceControlUsesAuthenticatedBoundedIPC() throws {
@@ -156,6 +158,109 @@ enum NativeContractTests {
         "hint": "",
         "active": false,
       ],
+    ]
+  }
+
+  private static func automationUsesAuthenticatedBoundedIPC() throws {
+    let transport = StubTransport { request in
+      let envelope = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "automation envelope is malformed"
+      )
+      try check(envelope["operation"] as? String == "automation-create", "wrong operation")
+      try check(envelope["credential"] as? String != nil, "automation omitted credential")
+      let payload = try require(envelope["payload"] as? [String: Any], "missing payload")
+      try check(payload["name"] as? String == "Hydrate", "wrong reminder name")
+      try check(payload["schedule"] as? String == "in 5m", "wrong schedule")
+      return try response(
+        for: request,
+        ok: true,
+        result: ["job": automationJobResult(enabled: false)],
+        error: nil
+      )
+    }
+    let job = try makeClient(transport: transport).createAutomationReminder(
+      name: "Hydrate",
+      schedule: "in 5m",
+      note: "Water",
+      callerID: "native-app",
+      sessionID: "session-1"
+    )
+    try check(!job.enabled && job.state == "paused", "created reminder was not paused")
+  }
+
+  private static func automationConsentPayloadCannotCarryWildcardApproval() throws {
+    let challenge = ConsentChallenge(
+      consentID: "automation-consent-1",
+      requestID: "automation-request-1",
+      callerID: "native-app",
+      sessionID: "session-1",
+      nonce: "nonce-1",
+      capabilityID: "core.jl.automation.reminder",
+      action: "activate reminder Hydrate",
+      actionClasses: ["local-automation"],
+      targetSummary: "once in 5m",
+      riskLevel: "low",
+      expiresInSeconds: 30
+    )
+    let transport = StubTransport { request in
+      let object = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "automation consent envelope is malformed"
+      )
+      try check(
+        object["operation"] as? String == "automation-consent-decision",
+        "wrong automation consent operation"
+      )
+      try check(object["credential"] is NSNull, "automation consent credential was not null")
+      let payload = try require(
+        object["payload"] as? [String: Any],
+        "automation consent payload is malformed"
+      )
+      try check(
+        Set(payload.keys) == ["consent_id", "decision", "signature"],
+        "automation consent payload exposed approval authority"
+      )
+      try check(payload["binding_fingerprint"] == nil, "fingerprint was sent")
+      try check(payload["approval_id"] == nil, "approval ID was sent")
+      return try response(
+        for: request,
+        ok: true,
+        result: ["state": "activated"],
+        error: nil
+      )
+    }
+    let state = try makeClient(transport: transport).submitAutomationConsent(
+      challenge: challenge,
+      decision: .approve,
+      signature: "signed-exact-automation-challenge"
+    )
+    try check(state == "activated", "automation consent response state was not activated")
+  }
+
+  private static func automationStatusResult() -> [String: Any] {
+    [
+      "available": true,
+      "scheduler_enabled": false,
+      "stopped": false,
+      "profile_home": "/tmp/jl-agent-native-tests/automation",
+      "mode": "fixed-local-no-agent-reminders",
+    ]
+  }
+
+  private static func automationJobResult(enabled: Bool) -> [String: Any] {
+    [
+      "id": "job-1",
+      "name": "Hydrate",
+      "prompt": "Water",
+      "schedule_display": "once in 5m",
+      "enabled": enabled,
+      "state": enabled ? "scheduled" : "paused",
+      "next_run_at": NSNull(),
+      "last_run_at": NSNull(),
+      "last_status": NSNull(),
+      "paused_reason": enabled ? NSNull() : "Created paused",
+      "latest_execution": NSNull(),
     ]
   }
 
@@ -495,6 +600,7 @@ enum NativeContractTests {
           "consent_available": true,
           "consent_key_fingerprint": String(repeating: "b", count: 64),
           "consent_enrollment_current": true,
+          "automation": automationStatusResult(),
           "computer_use": [
             "enabled": true,
             "health": "unavailable",

@@ -119,6 +119,144 @@ public struct JLRuntimeClient: Sendable {
     return try values.map(ActivityEvent.init(value:))
   }
 
+  public func automationStatus(
+    callerID: String,
+    sessionID: String
+  ) throws -> AutomationStatus {
+    let result = try authenticatedRequest(
+      operation: "automation-status",
+      payload: [:],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try AutomationStatus(value: result)
+  }
+
+  public func automationSchedules(
+    callerID: String,
+    sessionID: String
+  ) throws -> [AutomationSchedule] {
+    let result = try authenticatedRequest(
+      operation: "automation-list",
+      payload: [:],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    guard let values = result["jobs"]?.arrayValue else {
+      throw RuntimeClientError.malformedResponse
+    }
+    return try values.map(AutomationSchedule.init(value:))
+  }
+
+  public func automationHistory(
+    jobID: String? = nil,
+    callerID: String,
+    sessionID: String,
+    limit: Int = 50
+  ) throws -> [AutomationExecution] {
+    var payload: [String: JSONValue] = ["limit": .integer(limit)]
+    if let jobID { payload["job_id"] = .string(jobID) }
+    let result = try authenticatedRequest(
+      operation: "automation-history",
+      payload: payload,
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    guard let values = result["executions"]?.arrayValue else {
+      throw RuntimeClientError.malformedResponse
+    }
+    return try values.map(AutomationExecution.init(value:))
+  }
+
+  public func createAutomationReminder(
+    name: String,
+    schedule: String,
+    note: String,
+    callerID: String,
+    sessionID: String
+  ) throws -> AutomationSchedule {
+    let result = try authenticatedRequest(
+      operation: "automation-create",
+      payload: [
+        "name": .string(name),
+        "schedule": .string(schedule),
+        "note": .string(note),
+      ],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    guard let value = result["job"] else {
+      throw RuntimeClientError.malformedResponse
+    }
+    return try AutomationSchedule(value: value)
+  }
+
+  public func requestAutomationActivation(
+    jobID: String,
+    requestID: String,
+    callerID: String,
+    sessionID: String
+  ) throws -> ConsentChallenge {
+    let result = try authenticatedRequest(
+      operation: "automation-resume",
+      payload: ["job_id": .string(jobID)],
+      requestID: requestID,
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    guard result["state"]?.stringValue == "awaiting_approval" else {
+      throw RuntimeClientError.malformedResponse
+    }
+    return try ConsentChallenge(result: result)
+  }
+
+  public func pauseAutomationReminder(
+    jobID: String,
+    callerID: String,
+    sessionID: String
+  ) throws -> AutomationSchedule {
+    let result = try authenticatedRequest(
+      operation: "automation-pause",
+      payload: ["job_id": .string(jobID)],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    guard let value = result["job"] else {
+      throw RuntimeClientError.malformedResponse
+    }
+    return try AutomationSchedule(value: value)
+  }
+
+  public func removeAutomationReminder(
+    jobID: String,
+    callerID: String,
+    sessionID: String
+  ) throws -> Bool {
+    let result = try authenticatedRequest(
+      operation: "automation-remove",
+      payload: ["job_id": .string(jobID)],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    guard let removed = result["removed"]?.boolValue else {
+      throw RuntimeClientError.malformedResponse
+    }
+    return removed
+  }
+
+  public func stopAllAutomation(
+    callerID: String,
+    sessionID: String
+  ) throws -> AutomationStatus {
+    _ = try authenticatedRequest(
+      operation: "automation-stop-all",
+      payload: [:],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try automationStatus(callerID: callerID, sessionID: sessionID)
+  }
+
   public func voiceStatus(callerID: String, sessionID: String) throws -> VoiceStatus {
     try voiceControl(operation: "voice-status", callerID: callerID, sessionID: sessionID)
   }
@@ -240,6 +378,33 @@ public struct JLRuntimeClient: Sendable {
         callerID: challenge.callerID,
         sessionID: challenge.sessionID,
         operation: "consent-decision",
+        payload: [
+          "consent_id": .string(challenge.consentID),
+          "decision": .string(decision.rawValue),
+          "signature": .string(signature),
+        ],
+        credential: nil
+      )
+    )
+    guard let state = result["state"]?.stringValue else {
+      throw RuntimeClientError.malformedResponse
+    }
+    return state
+  }
+
+  public func submitAutomationConsent(
+    challenge: ConsentChallenge,
+    decision: ConsentDecision,
+    signature: String
+  ) throws -> String {
+    let result = try request(
+      endpoint: paths.consentSocket,
+      envelope: RequestEnvelope(
+        protocolVersion: protocolVersion,
+        requestID: challenge.requestID,
+        callerID: challenge.callerID,
+        sessionID: challenge.sessionID,
+        operation: "automation-consent-decision",
         payload: [
           "consent_id": .string(challenge.consentID),
           "decision": .string(decision.rawValue),
