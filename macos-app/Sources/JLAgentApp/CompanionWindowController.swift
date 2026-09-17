@@ -133,7 +133,10 @@ final class JLAgentAppDelegate: NSObject, NSApplicationDelegate {
     DispatchQueue.main.async {
       NSApp.windows
         .filter { $0.title == "JL Agent" }
-        .forEach { $0.orderOut(nil) }
+        .forEach {
+          $0.setContentSize(NSSize(width: 640, height: 520))
+          $0.orderOut(nil)
+        }
     }
     guard Bundle.main.bundleURL.pathExtension == "app" else { return }
     try? SMAppService.mainApp.register()

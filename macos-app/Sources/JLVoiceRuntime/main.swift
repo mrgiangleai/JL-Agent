@@ -7,7 +7,12 @@ struct JLVoiceRuntimeHost {
     guard let resourceURL = Bundle.main.resourceURL else {
       fail("JL Voice Runtime has no resource directory.")
     }
-    let launcher = resourceURL.appendingPathComponent("JLRuntime/run-runtime.sh")
+    let sharedLauncher = Bundle.main.bundleURL.deletingLastPathComponent()
+      .appendingPathComponent("JLRuntime/run-runtime.sh")
+    let nestedLauncher = resourceURL.appendingPathComponent("JLRuntime/run-runtime.sh")
+    let launcher = FileManager.default.isExecutableFile(atPath: sharedLauncher.path)
+      ? sharedLauncher
+      : nestedLauncher
     guard FileManager.default.isExecutableFile(atPath: launcher.path) else {
       fail("JL Voice Runtime is missing its packaged JL runtime launcher.")
     }
@@ -15,6 +20,7 @@ struct JLVoiceRuntimeHost {
     var environment = ProcessInfo.processInfo.environment
     environment["JL_AGENT_VOICE_ENABLED"] = "1"
     environment["JL_AGENT_VOICE_ACTIVATION_APPROVED"] = "1"
+    environment["HERMES_DISABLE_LAZY_INSTALLS"] = "1"
 
     let runtime = Process()
     runtime.executableURL = URL(fileURLWithPath: "/bin/zsh")

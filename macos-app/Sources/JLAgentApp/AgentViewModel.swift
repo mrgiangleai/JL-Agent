@@ -1141,6 +1141,12 @@ final class AgentViewModel: ObservableObject {
     if !status.activationApproved {
       return "Voice activation awaits explicit dependency/model and Microphone approval."
     }
+    if !status.voice.available {
+      return status.voice.details ?? "Microphone or speech-to-text is unavailable."
+    }
+    if !status.wake.available {
+      return status.wake.hint ?? "Wake phrase is unavailable."
+    }
     if status.voice.active { return "Listening for a spoken turn. Tools are disabled." }
     if status.wake.active {
       return "Wake word armed: \(status.wake.phrase ?? "configured phrase")."

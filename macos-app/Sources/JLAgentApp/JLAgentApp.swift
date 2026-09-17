@@ -37,10 +37,20 @@ struct JLAgentDesktopApp: App {
 
   private var mainWindowContent: some View {
     ContentView(viewModel: viewModel)
-      .frame(minWidth: 820, minHeight: 760)
+      .frame(width: 640, height: 520)
       .onReceive(NotificationCenter.default.publisher(for: .jlOpenMainWindow)) { _ in
+        configureMainWindow()
         NSApp.windows.first(where: { $0.title == "JL Agent" })?.makeKeyAndOrderFront(nil)
       }
+      .onAppear { configureMainWindow() }
+  }
+
+  private func configureMainWindow() {
+    DispatchQueue.main.async {
+      NSApp.windows.first(where: { $0.title == "JL Agent" })?.setContentSize(
+        NSSize(width: 640, height: 520)
+      )
+    }
   }
 }
 

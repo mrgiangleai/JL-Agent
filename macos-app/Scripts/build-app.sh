@@ -27,6 +27,7 @@ cp -R "$bin_dir/JLAgent_JLAgentApp.bundle" "$contents/Resources/JLAgent_JLAgentA
 runtime_bundle="$contents/Resources/JLRuntime"
 mkdir -p "$runtime_bundle/src" "$runtime_bundle/config" \
   "$runtime_bundle/upstream/hermes-agent"
+rm -rf "$contents/Resources/JLVoiceRuntime.app"
 cp -R "$voice_app" "$contents/Resources/JLVoiceRuntime.app"
 rsync -a --delete \
   --exclude='__pycache__/' --exclude='*.py[cod]' \

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -24,6 +25,28 @@ enum CompanionState: String, Equatable {
     case .attention: "JL cần bạn xác nhận"
     case .error: "JL gặp sự cố"
     case .sleeping: "JL đang nghỉ"
+    }
+  }
+}
+
+private struct CompanionCharacterImage: View {
+  let state: CompanionState
+
+  var body: some View {
+    if let image = NSImage(
+      contentsOf: CompanionResources.bundle.url(
+        forResource: state.assetName,
+        withExtension: "png"
+      ) ?? URL(fileURLWithPath: "")
+    ) {
+      Image(nsImage: image)
+        .resizable()
+        .scaledToFit()
+    } else {
+      Image(systemName: "questionmark.circle")
+        .resizable()
+        .scaledToFit()
+        .padding(28)
     }
   }
 }
@@ -58,6 +81,13 @@ struct CompanionView: View {
 
   private var answerText: String? { agent.companionAnswer }
 
+  private var voiceHelp: String {
+    if let status = agent.voiceStatus, !status.voice.available {
+      return status.voice.details ?? "Microphone or speech-to-text is unavailable."
+    }
+    return agent.voiceStatus?.voice.active == true ? "Dừng nghe" : "Nói với JL"
+  }
+
   var body: some View {
     HStack(alignment: .bottom, spacing: 8) {
       if let answerText {
@@ -78,9 +108,7 @@ struct CompanionView: View {
       }
 
       VStack(spacing: 5) {
-        Image(state.assetName, bundle: CompanionResources.bundle)
-          .resizable()
-          .scaledToFit()
+        CompanionCharacterImage(state: state)
           .frame(width: 112, height: 140)
           .scaleEffect(reaction ? 1.04 : 1)
           .opacity(reaction ? 0.86 : 1)
@@ -101,7 +129,7 @@ struct CompanionView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(agent.voiceStatus?.voice.active == true ? .red : .accentColor)
-        .help(agent.voiceStatus?.voice.active == true ? "Dừng nghe" : "Nói với JL")
+        .help(voiceHelp)
         .accessibilityLabel(agent.voiceStatus?.voice.active == true ? "Dừng nghe" : "Nói với JL")
       }
       .onHover { isHovering = $0 }

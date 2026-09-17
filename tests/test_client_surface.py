@@ -155,8 +155,10 @@ class NativeClientSurfaceTests(unittest.TestCase):
             ROOT / "macos-app" / "Sources" / "JLVoiceRuntime" / "main.swift"
         ).read_text(encoding="utf-8")
         self.assertIn('"JLRuntime/run-runtime.sh"', host_source)
+        self.assertIn('Bundle.main.bundleURL.deletingLastPathComponent()', host_source)
         self.assertIn('"JL_AGENT_VOICE_ENABLED"', host_source)
         self.assertIn('"JL_AGENT_VOICE_ACTIVATION_APPROVED"', host_source)
+        self.assertIn('"HERMES_DISABLE_LAZY_INSTALLS"', host_source)
         self.assertNotIn("installed but microphone activation is not enabled", host_source)
         for live_audio_marker in (
             "AVAudioEngine", "AVCaptureDevice", "AudioQueue", "sounddevice"
@@ -198,6 +200,9 @@ class NativeClientSurfaceTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn('"$contents/Resources/JLAgent_JLAgentApp.bundle"', build_app)
+        self.assertIn('rm -rf "$contents/Resources/JLVoiceRuntime.app"', build_app)
+        self.assertIn('.frame(width: 640, height: 520)', app)
+        self.assertIn('configureMainWindow()', app)
         self.assertIn('onTapGesture { react() }', companion)
         self.assertIn('Timer.publish(every: 1', companion)
         self.assertIn('Task.sleep(for: .seconds(10))', companion)
@@ -205,8 +210,18 @@ class NativeClientSurfaceTests(unittest.TestCase):
         self.assertIn('panel.backgroundColor = .clear', controller)
         self.assertIn('panel.isMovableByWindowBackground = true', controller)
         self.assertIn('SMAppService.mainApp.register()', controller)
+        self.assertIn('$0.setContentSize(NSSize(width: 640, height: 520))', controller)
         self.assertIn('MenuBarExtra("JL Agent"', app)
-        self.assertIn('forEach { $0.orderOut(nil) }', controller)
+        self.assertIn('$0.orderOut(nil)', controller)
+
+    def test_packaged_runtime_launches_binary_without_shell_parsing(self) -> None:
+        runtime_controller = (
+            ROOT / "macos-app" / "Sources" / "JLAgentCore" /
+            "RuntimeProcessController.swift"
+        ).read_text(encoding="utf-8")
+        self.assertIn('if launcherURL.pathExtension == "sh"', runtime_controller)
+        self.assertIn('child.executableURL = launcherURL', runtime_controller)
+        self.assertIn('child.executableURL = URL(fileURLWithPath: "/bin/zsh")', runtime_controller)
 
 
 if __name__ == "__main__":

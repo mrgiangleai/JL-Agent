@@ -117,7 +117,9 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
         (self.paths.root / "automation" / "jobs.json").write_text("[]\n")
 
         migration = prepare_library_state(
-            self.paths, legacy_project_root=legacy_root
+            self.paths,
+            legacy_project_root=legacy_root,
+            legacy_hermes_home=Path(self.temporary.name) / "missing-hermes",
         )
 
         self.assertEqual(migration["hermes"], "migrated")
@@ -148,10 +150,39 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "migration conflict"):
             prepare_library_state(
-                self.paths, legacy_project_root=legacy_root
+                self.paths,
+                legacy_project_root=legacy_root,
+                legacy_hermes_home=Path(self.temporary.name) / "missing-hermes",
             )
 
         self.assertEqual((legacy_models / "model.bin").read_bytes(), b"legacy")
+
+    def test_legacy_hermes_profile_is_forwarded_without_overwriting_jl_config(self) -> None:
+        legacy = Path(self.temporary.name) / "legacy-hermes"
+        legacy.mkdir(mode=0o700)
+        (legacy / "config.yaml").write_text(
+            "model:\n  provider: openai-codex\n  default: gpt-5.6-sol\n",
+            encoding="utf-8",
+        )
+        (legacy / "auth.json").write_text('{"active_provider":"openai-codex"}\n')
+        self.paths.hermes.mkdir(parents=True, mode=0o700)
+        (self.paths.hermes / "config.yaml").write_text(
+            "cron:\n  execution_policy: jl\n", encoding="utf-8"
+        )
+
+        migration = prepare_library_state(
+            self.paths, legacy_hermes_home=legacy
+        )
+
+        self.assertEqual(migration["legacy_hermes"], "migrated")
+        config = (self.paths.hermes / "config.yaml").read_text(encoding="utf-8")
+        self.assertIn("provider: openai-codex", config)
+        self.assertIn("execution_policy: jl", config)
+        self.assertEqual(
+            (self.paths.hermes / "auth.json").read_text(encoding="utf-8"),
+            '{"active_provider":"openai-codex"}\n',
+        )
+        self.assertTrue((legacy / "auth.json").exists())
 
     def test_stopped_runtime_credential_can_rotate_without_exposure(self) -> None:
         root = Path(self.temporary.name) / "rotation"

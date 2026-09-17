@@ -18,6 +18,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 from .automation_runtime import AutomationRuntime
 from .control.approvals import OneTimeApprovalStore
 from .control.assistant_loop import AssistantAdmission
@@ -222,8 +224,82 @@ def _write_private_json(path: Path, payload: dict[str, object]) -> None:
             pass
 
 
+def _read_private_legacy_file(path: Path) -> bytes:
+    details = path.lstat()
+    if (
+        stat.S_ISLNK(details.st_mode)
+        or not stat.S_ISREG(details.st_mode)
+        or details.st_uid != os.geteuid()
+    ):
+        raise RuntimeError(f"user-data migration source is unsafe: {path}")
+    return path.read_bytes()
+
+
+def _merged_legacy_config(source: Path, destination: Path) -> bytes:
+    try:
+        legacy = yaml.safe_load(source.read_text(encoding="utf-8")) or {}
+        current = yaml.safe_load(destination.read_text(encoding="utf-8")) or {}
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
+        raise RuntimeError(f"user-data migration config is invalid: {source}") from error
+    if not isinstance(legacy, dict) or not isinstance(current, dict):
+        raise RuntimeError(f"user-data migration config is not a mapping: {source}")
+    overlap = set(legacy).intersection(current)
+    if any(legacy[key] != current[key] for key in overlap):
+        raise RuntimeError(f"user-data migration conflict: {destination}")
+    merged = dict(legacy)
+    merged.update(current)
+    return yaml.safe_dump(merged, sort_keys=False).encode("utf-8")
+
+
+def _write_private_bytes(path: Path, payload: bytes) -> None:
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}")
+    descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _migrate_legacy_hermes_files(
+    source: Path | None, destination: Path
+) -> str:
+    if source is None or not source.exists():
+        return "absent"
+    if source.is_symlink() or not source.is_dir():
+        raise RuntimeError(f"user-data migration source is not a directory: {source}")
+
+    prepared: dict[Path, bytes] = {}
+    for name in ("config.yaml", "auth.json", ".env"):
+        legacy_path = source / name
+        if not legacy_path.exists():
+            continue
+        legacy_bytes = _read_private_legacy_file(legacy_path)
+        target = destination / name
+        if target.exists() or target.is_symlink():
+            target_bytes = _read_private_legacy_file(target)
+            if name == "config.yaml" and target_bytes != legacy_bytes:
+                prepared[target] = _merged_legacy_config(legacy_path, target)
+            elif target_bytes != legacy_bytes:
+                raise RuntimeError(f"user-data migration conflict: {target}")
+        else:
+            prepared[target] = legacy_bytes
+
+    for target, payload in prepared.items():
+        _write_private_bytes(target, payload)
+    return "migrated" if prepared else "already-present"
+
+
 def prepare_library_state(
-    paths: RuntimePaths, *, legacy_project_root: Path | None = None
+    paths: RuntimePaths, *, legacy_project_root: Path | None = None,
+    legacy_hermes_home: Path | None = None,
 ) -> dict[str, object]:
     """Prepare private Library paths and migrate only known legacy JL state.
 
@@ -244,6 +320,9 @@ def prepare_library_state(
         "state": "ready",
         "hermes": _migrate_tree_group(
             (paths.root / "hermes-home", paths.root / "automation"), paths.hermes
+        ),
+        "legacy_hermes": _migrate_legacy_hermes_files(
+            legacy_hermes_home, paths.hermes
         ),
         "models": _migrate_tree_group(legacy_model_sources, paths.models),
     }
@@ -694,6 +773,7 @@ def main(argv: list[str] | None = None) -> int:
     prepare_library_state(
         runtime_paths,
         legacy_project_root=Path(__file__).resolve().parents[2],
+        legacy_hermes_home=Path.home() / ".hermes",
     )
     existing_hermes_home = os.environ.get("HERMES_HOME")
     if (

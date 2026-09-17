@@ -71,8 +71,13 @@ public final class RuntimeProcessController: @unchecked Sendable {
 
     let output = try openDiagnosticLog()
     let child = Process()
-    child.executableURL = URL(fileURLWithPath: "/bin/zsh")
-    child.arguments = [launcherURL.path]
+    if launcherURL.pathExtension == "sh" {
+      child.executableURL = URL(fileURLWithPath: "/bin/zsh")
+      child.arguments = [launcherURL.path]
+    } else {
+      child.executableURL = launcherURL
+      child.arguments = []
+    }
     child.currentDirectoryURL = launcherURL.deletingLastPathComponent()
     child.standardOutput = output
     child.standardError = output
