@@ -2,6 +2,29 @@
 
 Last updated: 2026-09-17 ICT
 
+## Phase 9 Step 2 final checkpoint — daily-use polish
+
+- Step 2 daily-use polish is complete. Ordinary readiness now performs only
+  authenticated runtime status work; CuaDriver and automation probes are
+  deferred until an explicit `Refresh`, `Recheck`, or `Refresh Diagnostics`
+  action. Voice and Skills remain explicit-action paths.
+- The main status is reduced to clear Vietnamese states: `Đang kết nối`,
+  `Sẵn sàng`, or `Có vấn đề`. A runtime owned by the app is stopped during
+  controller cleanup so relaunch does not leave an orphan owned process.
+- The existing AF_UNIX authentication, consent gates, Hermes pin, TCC
+  ownership, packaged Hermes/OpenAI Codex chat path, and Phase 6 Hermes
+  working-tree changes are unchanged.
+- Focused validation passed: client/runtime tests `18/18`, Python compilation,
+  Swift compile-only parsing, `git diff --check`, and packaged release
+  `JL Agent.app` build with the nested voice host. No live voice/CUA test,
+  dependency installation, signing work, or Hermes change was performed.
+- Nothing in the remaining unblocked scope prevents personal text-chat daily
+  use on this Mac. Microphone TCC and CuaDriver grants remain normal
+  user-managed prerequisites for those optional paths; stable signing,
+  notarization, distribution, and wake-word dependency installation remain
+  deferred. Recommend Phase 9 closeout; do not create another implementation
+  phase.
+
 ## Phase 9 product decision — personal v1 permission/signing boundary
 
 - JL Agent v1 is a personal daily-driver for this Mac and this user account

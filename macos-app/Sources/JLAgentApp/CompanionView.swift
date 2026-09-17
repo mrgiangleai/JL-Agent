@@ -64,7 +64,9 @@ struct CompanionView: View {
   private var state: CompanionState {
     if agent.pendingAssistantConsent != nil || agent.pendingConsent != nil
       || agent.pendingAutomationConsent != nil { return .attention }
-    if agent.connectionState == .authenticationFailed || agent.connectionState == .unavailable {
+    if agent.connectionState == .authenticationFailed || agent.connectionState == .unavailable
+      || agent.connectionState == .degraded
+    {
       return .error
     }
     if agent.voiceStatus?.voice.active == true || agent.voiceStatus?.wake.active == true {

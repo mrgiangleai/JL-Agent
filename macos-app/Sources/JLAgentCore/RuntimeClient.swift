@@ -92,10 +92,14 @@ public struct JLRuntimeClient: Sendable {
     self.maximumBytes = maximumBytes
   }
 
-  public func status(callerID: String, sessionID: String) throws -> RuntimeStatus {
+  public func status(
+    callerID: String,
+    sessionID: String,
+    includeOptional: Bool = false
+  ) throws -> RuntimeStatus {
     let result = try authenticatedRequest(
       operation: "status",
-      payload: [:],
+      payload: includeOptional ? ["include_optional": .bool(true)] : [:],
       callerID: callerID,
       sessionID: sessionID
     )

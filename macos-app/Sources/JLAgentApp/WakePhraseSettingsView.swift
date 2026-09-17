@@ -49,7 +49,7 @@ struct WakePhraseSettingsView: View {
         .font(.caption2.monospaced())
         .textSelection(.enabled)
         HStack {
-          Button("Refresh Diagnostics") { viewModel.refreshDiagnostics() }
+          Button("Refresh Diagnostics") { viewModel.refreshOptionalStatus() }
           Button("Export Redacted Diagnostics") { viewModel.exportDiagnostics() }
           Button("Repair Model Cache", role: .destructive) {
             viewModel.repairModelCache()

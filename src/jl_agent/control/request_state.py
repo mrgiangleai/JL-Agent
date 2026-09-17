@@ -89,6 +89,7 @@ class RequestLifecycle:
 
 RequestDecoder = Callable[[IPCRequestEnvelope], ControlRequest]
 StatusProvider = Callable[[], Mapping[str, Any]]
+OptionalStatusProvider = Callable[[], Mapping[str, Any]]
 ActivityReader = Callable[[int], tuple[Mapping[str, Any], ...]]
 VoiceHandler = Callable[[str, Mapping[str, Any], str, str], Mapping[str, object]]
 AutomationHandler = Callable[[IPCRequestEnvelope], IPCResponseEnvelope]
@@ -109,6 +110,7 @@ class SecureControlRequestHandler:
         execution_gate: ExecutionGate | None = None,
         consent_coordinator: ConsentCoordinator | None = None,
         status_provider: StatusProvider | None = None,
+        optional_status_provider: OptionalStatusProvider | None = None,
         activity_reader: ActivityReader | None = None,
         voice_handler: VoiceHandler | None = None,
         automation_handler: AutomationHandler | None = None,
@@ -122,6 +124,7 @@ class SecureControlRequestHandler:
         self.execution_gate = execution_gate
         self.consent_coordinator = consent_coordinator
         self.status_provider = status_provider
+        self.optional_status_provider = optional_status_provider
         self.activity_reader = activity_reader
         self.voice_handler = voice_handler
         self.automation_handler = automation_handler
@@ -145,11 +148,23 @@ class SecureControlRequestHandler:
             )
 
         if envelope.operation == "status":
-            if envelope.payload or self.status_provider is None:
+            include_optional = envelope.payload.get("include_optional", False)
+            if (
+                set(envelope.payload) - {"include_optional"}
+                or not isinstance(include_optional, bool)
+                or self.status_provider is None
+                or (include_optional and self.optional_status_provider is None)
+            ):
                 lifecycle.transition(RequestState.FAILED)
                 return self._failure(envelope, lifecycle, "malformed_payload")
+            provider = (
+                self.optional_status_provider
+                if include_optional
+                else self.status_provider
+            )
+            assert provider is not None
             return IPCResponseEnvelope.success(
-                envelope.request_id, dict(self.status_provider())
+                envelope.request_id, dict(provider())
             )
         if envelope.operation == "activity":
             try:

@@ -46,6 +46,10 @@ public final class RuntimeProcessController: @unchecked Sendable {
       ?? URL(fileURLWithPath: "/__missing__/JLRuntime/run-runtime.sh")
   }
 
+  deinit {
+    _ = stopOwnedRuntime()
+  }
+
   public func ensureReady(timeout: TimeInterval = 15) async throws {
     if isReady() { return }
     try startIfNeeded()

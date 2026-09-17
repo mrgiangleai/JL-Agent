@@ -67,6 +67,7 @@ public struct RuntimeStatus: Equatable, Sendable {
   public let consentAvailable: Bool
   public let consentKeyFingerprint: String?
   public let consentEnrollmentCurrent: Bool
+  public let optionalChecksLoaded: Bool
   public let computerUse: ComputerUseStatus
   public let automation: AutomationStatus
 
@@ -92,6 +93,7 @@ public struct RuntimeStatus: Equatable, Sendable {
     self.consentAvailable = consent
     self.consentKeyFingerprint = result["consent_key_fingerprint"]?.stringValue
     self.consentEnrollmentCurrent = consentEnrollmentCurrent
+    self.optionalChecksLoaded = result["optional_checks_loaded"]?.boolValue ?? false
     self.computerUse = try ComputerUseStatus(value: computerUse)
     self.automation = try AutomationStatus(value: automation)
   }

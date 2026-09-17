@@ -87,7 +87,7 @@ struct ContentView: View {
               .disabled(viewModel.isWorking)
             Button("Stop") { viewModel.stopRuntime() }
               .disabled(viewModel.isWorking)
-            Button("Refresh") { viewModel.refreshStatus() }
+            Button("Refresh") { viewModel.refreshOptionalStatus() }
           }
           Text("Session: \(viewModel.sessionID)")
             .font(.caption2.monospaced())
@@ -259,7 +259,7 @@ struct ContentView: View {
               Spacer()
               Text(status.executionReady ? "ready" : status.health)
                 .foregroundStyle(status.executionReady ? .green : .orange)
-              Button("Recheck") { viewModel.refreshStatus() }
+              Button("Recheck") { viewModel.refreshOptionalStatus() }
             }
             Text("Foreground runtime PID: \(viewModel.runtimePIDText)")
               .font(.caption.monospaced())
@@ -454,9 +454,8 @@ struct ContentView: View {
   private var statusColor: Color {
     switch viewModel.connectionState {
     case .ready: .green
-    case .connected, .connecting: .yellow
-    case .degraded: .orange
-    case .authenticationFailed, .unavailable: .red
+    case .connecting: .yellow
+    case .connected, .degraded, .authenticationFailed, .unavailable: .red
     }
   }
 
@@ -464,10 +463,7 @@ struct ContentView: View {
     switch viewModel.connectionState {
     case .ready: "Sẵn sàng"
     case .connecting: "Đang kết nối"
-    case .connected: "Đã kết nối"
-    case .degraded: "Cần kiểm tra"
-    case .authenticationFailed: "Cần xác thực"
-    case .unavailable: "Ngoại tuyến"
+    case .connected, .degraded, .authenticationFailed, .unavailable: "Có vấn đề"
     }
   }
 

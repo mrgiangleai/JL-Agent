@@ -24,6 +24,12 @@ class NativeClientSurfaceTests(unittest.TestCase):
         self.credentials = FileCredentialProvider(runtime / "ipc.credential")
         self.credential = self.credentials.load_or_create()
         self.audit = AuditLedger(runtime / "audit.jsonl")
+        self.optional_status_calls = 0
+
+        def optional_status() -> dict[str, object]:
+            self.optional_status_calls += 1
+            return {"optional": True}
+
         self.handler = SecureControlRequestHandler(
             credentials=self.credentials,
             approvals=OneTimeApprovalStore(),
@@ -41,6 +47,7 @@ class NativeClientSurfaceTests(unittest.TestCase):
                 "transport": "AF_UNIX",
                 "consent_available": True,
             },
+            optional_status_provider=optional_status,
             activity_reader=self.audit.safe_activity,
         )
 
@@ -93,6 +100,7 @@ class NativeClientSurfaceTests(unittest.TestCase):
         )
 
         self.assertTrue(status.ok)
+
         self.assertEqual(status.result["state"], "ready")  # type: ignore[index]
         self.assertTrue(activity.ok)
         events = activity.result["events"]  # type: ignore[index]
@@ -103,6 +111,34 @@ class NativeClientSurfaceTests(unittest.TestCase):
             self.envelope("activity", {"limit": 101}, credential=self.credential)
         )
         self.assertEqual(invalid.error_code, "activity_unavailable")
+
+    def test_optional_status_checks_are_explicit(self) -> None:
+        base = self.handler(
+            self.envelope("status", {}, credential=self.credential)
+        )
+        self.assertTrue(base.ok)
+        self.assertEqual(self.optional_status_calls, 0)
+
+        optional = self.handler(
+            self.envelope(
+                "status",
+                {"include_optional": True},
+                credential=self.credential,
+            )
+        )
+        self.assertTrue(optional.ok)
+        self.assertEqual(optional.result, {"optional": True})
+        self.assertEqual(self.optional_status_calls, 1)
+
+        invalid = self.handler(
+            self.envelope(
+                "status",
+                {"include_optional": "true"},
+                credential=self.credential,
+            )
+        )
+        self.assertFalse(invalid.ok)
+        self.assertEqual(invalid.error_code, "malformed_payload")
 
     def test_native_client_has_no_direct_hermes_execution_surface(self) -> None:
         native_root = ROOT / "macos-app" / "Sources"

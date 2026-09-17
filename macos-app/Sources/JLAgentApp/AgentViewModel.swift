@@ -110,7 +110,7 @@ final class AgentViewModel: ObservableObject {
     }
   }
 
-  func refreshStatus() {
+  func refreshStatus(includeOptional: Bool = false) {
     connectionState = .connecting
     let client = client
     let signer = signer
@@ -121,16 +121,24 @@ final class AgentViewModel: ObservableObject {
         try await runtimeProcess.ensureReady()
         let observed = try await Task.detached {
           (
-            try client.status(callerID: callerID, sessionID: sessionID),
+            try client.status(
+              callerID: callerID,
+              sessionID: sessionID,
+              includeOptional: includeOptional
+            ),
             try signer.publicKeyFingerprint()
           )
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
-        refreshDiagnostics()
       } catch {
         apply(error)
       }
     }
+  }
+
+  func refreshOptionalStatus() {
+    refreshDiagnostics()
+    refreshStatus(includeOptional: true)
   }
 
   func restartRuntime() {
@@ -1016,8 +1024,13 @@ final class AgentViewModel: ObservableObject {
   private func apply(_ status: RuntimeStatus, localConsentFingerprint: String) {
     runtimePID = status.runtimePID
     hermesRevision = status.hermesRevision
-    computerUseStatus = status.computerUse
-    automationStatus = status.automation
+    if status.optionalChecksLoaded {
+      computerUseStatus = status.computerUse
+      automationStatus = status.automation
+    } else {
+      computerUseStatus = nil
+      automationStatus = nil
+    }
     consentIdentityMatches =
       status.consentEnrollmentCurrent
       && status.consentKeyFingerprint == localConsentFingerprint

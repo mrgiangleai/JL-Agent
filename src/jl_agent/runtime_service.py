@@ -629,20 +629,16 @@ def build_runtime_service(
         automation_manager, lambda: automation_runtime.scheduler_enabled
     )
 
-    def runtime_status() -> dict[str, object]:
-        computer_use = computer_use_probe.inspect()
+    def consent_status() -> tuple[bool, str | None]:
         consent_enrollment_current = _consent_enrollment_is_current(
             paths.consent_public_key,
             verifier.key_fingerprint if verifier.available else None,
         )
-        execution_readiness = ComputerUseExecutionReadiness(
-            host=computer_use,
-            hermes_pin_valid=True,
-            authenticated_runtime=True,
-            policy_ready=True,
-            consent_ready=consent_enrollment_current,
-        )
-        return {
+        return consent_enrollment_current, verifier.key_fingerprint
+
+    def runtime_status(*, include_optional: bool) -> dict[str, object]:
+        consent_enrollment_current, consent_key_fingerprint = consent_status()
+        status: dict[str, object] = {
             "ready": True,
             "state": "ready" if consent_enrollment_current else "degraded",
             "runtime_pid": os.getpid(),
@@ -650,13 +646,38 @@ def build_runtime_service(
             "transport": "AF_UNIX",
             "hermes_revision": HERMES_REVISION,
             "consent_available": verifier.available,
-            "consent_key_fingerprint": verifier.key_fingerprint,
+            "consent_key_fingerprint": consent_key_fingerprint,
             "consent_enrollment_current": consent_enrollment_current,
-            "computer_use": execution_readiness.as_dict(),
-            "automation": automation_manager.status(
-                scheduler_enabled=automation_runtime.scheduler_enabled
-            ),
+            "optional_checks_loaded": include_optional,
         }
+        if not include_optional:
+            status.update(
+                {
+                    "computer_use": _deferred_computer_use_status(
+                        consent_enrollment_current
+                    ),
+                    "automation": _deferred_automation_status(paths.hermes),
+                }
+            )
+            return status
+
+        computer_use = computer_use_probe.inspect()
+        execution_readiness = ComputerUseExecutionReadiness(
+            host=computer_use,
+            hermes_pin_valid=True,
+            authenticated_runtime=True,
+            policy_ready=True,
+            consent_ready=consent_enrollment_current,
+        )
+        status.update(
+            {
+                "computer_use": execution_readiness.as_dict(),
+                "automation": automation_manager.status(
+                    scheduler_enabled=automation_runtime.scheduler_enabled
+                ),
+            }
+        )
+        return status
 
     handler = SecureControlRequestHandler(
         credentials=credentials,
@@ -665,7 +686,8 @@ def build_runtime_service(
         request_decoder=decode_control_request,
         execution_gate=gate,
         consent_coordinator=consent,
-        status_provider=runtime_status,
+        status_provider=lambda: runtime_status(include_optional=False),
+        optional_status_provider=lambda: runtime_status(include_optional=True),
         activity_reader=audit.safe_activity,
         automation_handler=automation_handler,
         skill_handler=skill_manager,
@@ -713,6 +735,42 @@ def build_runtime_service(
         automation=automation_runtime,
         automation_manager=automation_manager,
     )
+
+
+def _deferred_computer_use_status(consent_ready: bool) -> dict[str, object]:
+    return {
+        "enabled": True,
+        "health": "unavailable",
+        "ready": False,
+        "platform_supported": sys.platform == "darwin",
+        "driver_available": False,
+        "driver_reachable": False,
+        "driver_contract_ready": False,
+        "driver_version": None,
+        "driver_app_available": False,
+        "driver_identity_ready": False,
+        "driver_bundle_id": None,
+        "driver_team_id": None,
+        "hermes_pin_valid": True,
+        "authenticated_runtime": True,
+        "policy_ready": True,
+        "consent_ready": consent_ready,
+        "driver_service_required": False,
+        "execution_ready": False,
+        "blocked_reason": "CuaDriver readiness check is available on explicit refresh.",
+        "detail": "CuaDriver readiness has not been checked.",
+        "permissions": [],
+    }
+
+
+def _deferred_automation_status(home: Path) -> dict[str, object]:
+    return {
+        "available": False,
+        "scheduler_enabled": False,
+        "stopped": True,
+        "profile_home": str(home),
+        "mode": "not-checked",
+    }
 
 
 def _load_consent_verifier(path: Path) -> ConsentSignatureVerifier:
