@@ -22,6 +22,26 @@ contents="$app_dir/Contents"
 mkdir -p "$contents/MacOS" "$contents/Resources"
 cp "$bin_dir/JLAgentApp" "$contents/MacOS/JLAgentApp"
 cp "$app_root/Resources/Info.plist" "$contents/Info.plist"
+icon_source="$app_root/Resources/JLAgentIcon.png"
+iconset="$contents/Resources/JLAgent.iconset"
+if [[ ! -f "$icon_source" ]]; then
+  print -u2 -- "error: JL Agent icon source is missing: $icon_source"
+  exit 66
+fi
+rm -rf "$iconset" "$contents/Resources/JLAgent.icns"
+mkdir -p "$iconset"
+for spec in \
+  "16:icon_16x16.png" "32:icon_16x16@2x.png" \
+  "32:icon_32x32.png" "64:icon_32x32@2x.png" \
+  "128:icon_128x128.png" "256:icon_128x128@2x.png" \
+  "256:icon_256x256.png" "512:icon_256x256@2x.png" \
+  "512:icon_512x512.png" "1024:icon_512x512@2x.png"; do
+  size="${spec%%:*}"
+  name="${spec#*:}"
+  sips -z "$size" "$size" "$icon_source" --out "$iconset/$name" >/dev/null
+done
+iconutil --convert icns --output "$contents/Resources/JLAgent.icns" "$iconset"
+rm -rf "$iconset"
 rm -rf "$app_dir/JLAgent_JLAgentApp.bundle"
 cp -R "$bin_dir/JLAgent_JLAgentApp.bundle" "$contents/Resources/JLAgent_JLAgentApp.bundle"
 runtime_bundle="$contents/Resources/JLRuntime"
@@ -52,9 +72,18 @@ chmod 0755 "$runtime_bundle/run-runtime.sh"
 codesign --force --sign "$signing_identity" "$app_dir"
 codesign --verify --strict "$app_dir"
 
+root_app="$project_root/JL Agent.app"
+if [[ -e "$root_app" && ! -L "$root_app" ]]; then
+  print -u2 -- "error: root JL Agent.app exists but is not the managed build link: $root_app"
+  exit 73
+fi
+relative_app="${app_dir#$project_root/}"
+ln -sfn "$relative_app" "$root_app"
+
 if [[ "$signing_identity" == "-" ]]; then
   print -u2 -- "warning: JL Agent uses ad-hoc signing; set JL_CODE_SIGN_IDENTITY to an existing Apple Development identity for stable development signing"
 else
   print -u2 -- "signed JL Agent with configured identity: $signing_identity"
 fi
 print -r -- "$app_dir"
+print -r -- "$root_app"

@@ -6,6 +6,8 @@
     <string>en</string>
     <key>CFBundleExecutable</key>
     <string>JLAgentApp</string>
+    <key>CFBundleIconFile</key>
+    <string>JLAgent.icns</string>
     <key>CFBundleIdentifier</key>
     <string>com.jlagent.control</string>
     <key>CFBundleInfoDictionaryVersion</key>
