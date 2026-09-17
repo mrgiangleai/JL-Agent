@@ -10,7 +10,7 @@ extension Notification.Name {
 final class CompanionWindowController: NSObject, ObservableObject, NSWindowDelegate {
   private static let positionXKey = "JLAgent.companion.origin.x"
   private static let positionYKey = "JLAgent.companion.origin.y"
-  private static let windowSize = NSSize(width: 540, height: 340)
+  private static let windowSize = NSSize(width: 620, height: 400)
 
   let agent: AgentViewModel
   private var panel: NSPanel?
@@ -109,9 +109,9 @@ final class CompanionWindowController: NSObject, ObservableObject, NSWindowDeleg
   }
 
   private func interactiveRegions() -> [CGRect] {
-    var regions = [CGRect(x: 248, y: 0, width: 292, height: 340)]
+    var regions = [CGRect(x: 248, y: 0, width: 372, height: 400)]
     if agent.companionAnswer != nil {
-      regions.append(CGRect(x: 0, y: 0, width: 248, height: 340))
+      regions.append(CGRect(x: 0, y: 0, width: 248, height: 400))
     }
     return regions
   }

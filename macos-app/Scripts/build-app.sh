@@ -22,7 +22,7 @@ contents="$app_dir/Contents"
 mkdir -p "$contents/MacOS" "$contents/Resources"
 cp "$bin_dir/JLAgentApp" "$contents/MacOS/JLAgentApp"
 cp "$app_root/Resources/Info.plist" "$contents/Info.plist"
-icon_source="$app_root/Resources/JLAgentIcon.png"
+icon_source="$app_root/Sources/JLAgentApp/Resources/JLCharacter/idle.png"
 iconset="$contents/Resources/JLAgent.iconset"
 if [[ ! -f "$icon_source" ]]; then
   print -u2 -- "error: JL Agent icon source is missing: $icon_source"
@@ -42,7 +42,7 @@ for spec in \
 done
 iconutil --convert icns --output "$contents/Resources/JLAgent.icns" "$iconset"
 rm -rf "$iconset"
-rm -rf "$app_dir/JLAgent_JLAgentApp.bundle"
+rm -rf "$contents/Resources/JLAgent_JLAgentApp.bundle"
 cp -R "$bin_dir/JLAgent_JLAgentApp.bundle" "$contents/Resources/JLAgent_JLAgentApp.bundle"
 runtime_bundle="$contents/Resources/JLRuntime"
 mkdir -p "$runtime_bundle/src" "$runtime_bundle/config" \

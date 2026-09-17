@@ -41,12 +41,8 @@ private struct CompanionCharacterImage: View {
         ) ?? URL(fileURLWithPath: "")
       ) {
         Image(nsImage: image)
-          .resizable()
-          .scaledToFit()
       } else {
         Image(systemName: "questionmark.circle")
-          .resizable()
-          .scaledToFit()
           .padding(28)
       }
     }
@@ -114,7 +110,7 @@ struct CompanionView: View {
 
       VStack(spacing: 5) {
         CompanionCharacterImage(state: state)
-          .frame(width: 224, height: 280)
+          .fixedSize()
           .scaleEffect(reaction ? 1.04 : 1)
           .opacity(reaction ? 0.86 : 1)
           .animation(.easeOut(duration: 0.16), value: reaction)
