@@ -307,12 +307,10 @@ struct ContentView: View {
             Button("Refresh") { Task { await viewModel.refreshVoice() } }
           }
           HStack {
-            Button("Call JL") { viewModel.startVoice() }
-              .disabled(!canStartVoice)
-            Button("Stop Voice") { viewModel.stopVoice() }
-              .disabled(viewModel.voiceStatus?.voice.active != true || viewModel.isWorking)
             Button("Arm Wake") { viewModel.startWake() }
               .disabled(!canStartWake)
+            Button("Stop Voice") { viewModel.stopVoice() }
+              .disabled(viewModel.voiceStatus?.voice.active != true || viewModel.isWorking)
             Button("Stop Wake") { viewModel.stopWake() }
               .disabled(viewModel.voiceStatus?.wake.active != true || viewModel.isWorking)
             Spacer()
@@ -320,6 +318,9 @@ struct ContentView: View {
               .font(.caption.bold())
               .foregroundStyle(.green)
           }
+          Text("Voice chỉ bắt đầu sau wake phrase \"hey JL\" và tự tắt sau 20 giây im lặng.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
           if !viewModel.voiceEvents.isEmpty {
             ScrollView {
               VStack(alignment: .leading, spacing: 4) {

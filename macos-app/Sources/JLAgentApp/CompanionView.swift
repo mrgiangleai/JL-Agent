@@ -134,7 +134,12 @@ struct CompanionView: View {
     if let status = agent.voiceStatus, !status.voice.available {
       return status.voice.details ?? "Microphone or speech-to-text is unavailable."
     }
-    return agent.voiceStatus?.voice.active == true ? "Dừng nghe" : "Nói với JL"
+    if let status = agent.voiceStatus, !status.wake.available {
+      return status.wake.hint ?? "Wake phrase is unavailable."
+    }
+    if agent.voiceStatus?.voice.active == true { return "Dừng voice" }
+    if agent.voiceStatus?.wake.active == true { return "Tắt chờ wake phrase" }
+    return "Chờ \"hey JL\""
   }
 
   var body: some View {
@@ -169,7 +174,7 @@ struct CompanionView: View {
           .accessibilityLabel(state.accessibilityLabel)
           .onTapGesture { react() }
           .contextMenu {
-            Button("Nói với JL") { agent.toggleVoiceFromCompanion() }
+            Button("Chờ \"hey JL\"") { agent.toggleVoiceFromCompanion() }
             Button("Mở JL") { onOpenMain() }
           }
 
@@ -181,9 +186,24 @@ struct CompanionView: View {
             .frame(width: 28, height: 28)
         }
         .buttonStyle(.borderedProminent)
-        .tint(agent.voiceStatus?.voice.active == true ? .red : .accentColor)
+        .tint(
+          agent.voiceStatus?.voice.active == true
+            ? .red
+            : agent.voiceStatus?.wake.active == true ? .orange : .accentColor
+        )
         .help(voiceHelp)
-        .accessibilityLabel(agent.voiceStatus?.voice.active == true ? "Dừng nghe" : "Nói với JL")
+        .accessibilityLabel(voiceHelp)
+
+        Button {
+          onOpenMain()
+        } label: {
+          Image(systemName: "text.bubble.fill")
+            .font(.system(size: 12, weight: .semibold))
+            .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.bordered)
+        .help("Mở chat text")
+        .accessibilityLabel("Mở chat text")
       }
       .onHover { isHovering = $0 }
     }

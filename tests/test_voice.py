@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import tempfile
+import time
 import unittest
 from types import ModuleType
 from typing import cast
@@ -121,7 +122,7 @@ class VoiceCoordinatorTests(unittest.TestCase):
         status = self.voice.status("caller", "session")
         wake_status = cast(dict[str, object], status["wake"])
 
-        self.assertEqual(DEFAULT_WAKE_PHRASE, "hey j l")
+        self.assertEqual(DEFAULT_WAKE_PHRASE, "hey jl")
         self.assertEqual(wake_status["phrase"], DEFAULT_WAKE_PHRASE)
 
     def test_transcript_uses_shared_admission_and_speaks_conversation_reply(
@@ -167,6 +168,27 @@ class VoiceCoordinatorTests(unittest.TestCase):
         self.assertTrue(status["wake"]["active"])
         self.assertTrue(status["voice"]["active"])
         self.assertFalse(status["tool_execution_enabled"])
+
+    def test_voice_stops_after_configured_silence_timeout(self) -> None:
+        voice = VoiceCoordinator(
+            backend=self.backend,
+            assistant_handler=lambda _: IPCResponseEnvelope.failure(
+                "unused", "unused", "unused"
+            ),
+            credential="voice-credential",
+            enabled=True,
+            activation_approved=True,
+            run_async=lambda task: task(),
+            silence_timeout_seconds=0.02,
+        )
+        voice.start_wake("caller", "session")
+        assert self.backend.wake_callback is not None
+        self.backend.wake_callback()
+        time.sleep(0.08)
+
+        status = voice.status("caller", "session")
+        self.assertFalse(status["voice"]["active"])
+        self.assertIn("voice", self.backend.stopped)
 
     def test_wake_phrase_must_pass_test_before_becoming_default(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

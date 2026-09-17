@@ -49,7 +49,7 @@ final class AgentViewModel: ObservableObject {
   @Published var reminderScheduleText = "5m"
   @Published var reminderRecurring = false
   @Published var pendingAutomationConsent: ConsentChallenge?
-  @Published var wakePhraseDraft = "HEY J L"
+  @Published var wakePhraseDraft = "HEY JL"
   @Published var testedWakePhrase: String?
   @Published var wakePhraseMessage = "Test a phrase before making it the default."
   @Published var runtimePID: Int?
@@ -584,7 +584,7 @@ final class AgentViewModel: ObservableObject {
         try client.voiceStatus(callerID: callerID, sessionID: sessionID)
       }.value
       voiceStatus = status
-      if wakePhraseDraft.isEmpty { wakePhraseDraft = status.wake.phrase ?? "hey j l" }
+      if wakePhraseDraft.isEmpty { wakePhraseDraft = status.wake.phrase ?? "hey jl" }
       voiceMessage = Self.voiceSummary(status)
       if status.ownedByCurrentSession {
         voiceEvents = try await Task.detached {
@@ -791,8 +791,11 @@ final class AgentViewModel: ObservableObject {
       stopVoice()
       return
     }
-    companionAnswer = nil
-    startVoice()
+    if voiceStatus?.wake.active == true {
+      stopWake()
+    } else {
+      startWake()
+    }
   }
 
   func dismissCompanionAnswer() {

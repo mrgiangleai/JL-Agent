@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class FakeBackend:
     def __init__(self) -> None:
         self.voice_callback = None
+        self.wake_callback = None
 
     def requirements(self) -> dict[str, object]:
         return {
@@ -35,7 +36,7 @@ class FakeBackend:
         pass
 
     def start_wake(self, *, on_wake, phrase: str) -> None:
-        pass
+        self.wake_callback = on_wake
 
     def stop_wake(self) -> None:
         pass
@@ -108,16 +109,22 @@ class VoiceIPCTests(unittest.TestCase):
 
     def test_voice_start_and_events_use_authenticated_identity(self) -> None:
         started = self.request("voice-start")
+        self.assertFalse(started.ok)
+        self.assertEqual(started.error_code, "voice_requires_wake_phrase")
+
+        started = self.request("wake-start")
         self.assertTrue(started.ok)
-        self.assertTrue(started.result["voice"]["active"])
+        self.assertTrue(started.result["wake"]["active"])
 
         denied = self.request("voice-events", session="s2")
         self.assertFalse(denied.ok)
         self.assertEqual(denied.error_code, "voice_session_mismatch")
 
     def test_transcript_uses_authenticated_shared_assistant_admission(self) -> None:
-        started = self.request("voice-start")
+        started = self.request("wake-start")
         self.assertTrue(started.ok)
+        assert self.backend.wake_callback is not None
+        self.backend.wake_callback()
         assert self.backend.voice_callback is not None
 
         self.backend.voice_callback("hello jl")

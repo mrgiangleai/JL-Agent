@@ -6,7 +6,7 @@ struct WakePhraseSettingsView: View {
   var body: some View {
     Form {
       Section("Voice") {
-        Text("Default wake phrase: \(viewModel.voiceStatus?.wake.phrase ?? "hey j l")")
+        Text("Default wake phrase: \(viewModel.voiceStatus?.wake.phrase ?? "hey jl")")
         TextField("Wake phrase", text: $viewModel.wakePhraseDraft)
         Text(viewModel.wakePhraseMessage)
           .font(.caption)
@@ -23,8 +23,7 @@ struct WakePhraseSettingsView: View {
             .disabled(!viewModel.canSaveWakePhrase)
         }
         Text(
-          "Call JL remains available in the main window and starts listening without "
-            + "wake-word detection."
+          "JL chỉ bắt đầu voice sau khi nghe wake phrase \"hey JL\". Voice tự tắt sau 20 giây im lặng."
         )
         .font(.caption)
         .foregroundStyle(.secondary)

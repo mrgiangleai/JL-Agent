@@ -86,7 +86,8 @@ class _TTSConfigModule(Protocol):
 
 RunAsync = Callable[[Callable[[], None]], None]
 _TTS_CONFIG_LOCK = threading.RLock()
-DEFAULT_WAKE_PHRASE = "hey j l"
+DEFAULT_WAKE_PHRASE = "hey jl"
+VOICE_SILENCE_TIMEOUT_SECONDS = 20.0
 
 
 def macos_say_tts_config() -> dict[str, object]:
@@ -132,7 +133,10 @@ class VoiceCoordinator:
         event_capacity: int = 100,
         run_async: RunAsync = _daemon,
         wake_phrase_path: Path | None = None,
+        silence_timeout_seconds: float = VOICE_SILENCE_TIMEOUT_SECONDS,
     ) -> None:
+        if silence_timeout_seconds <= 0:
+            raise ValueError("silence timeout must be positive")
         self._backend = backend
         self._assistant_handler = assistant_handler
         self._credential = credential
@@ -151,6 +155,8 @@ class VoiceCoordinator:
         self._wake_phrase = self._load_wake_phrase()
         self._tested_phrase: str | None = None
         self._wake_test_active = False
+        self._silence_timeout_seconds = silence_timeout_seconds
+        self._silence_timer: threading.Timer | None = None
 
     def handle(
         self,
@@ -164,7 +170,7 @@ class VoiceCoordinator:
             return self.status(caller_id, session_id)
         if operation == "voice-start":
             self._require_empty(payload)
-            return self.start_voice(caller_id, session_id)
+            raise VoiceError("voice_requires_wake_phrase")
         if operation == "voice-stop":
             self._require_empty(payload)
             return self.stop_voice(caller_id, session_id)
@@ -218,7 +224,7 @@ class VoiceCoordinator:
                 },
             }
 
-    def start_voice(self, caller_id: str, session_id: str) -> dict[str, object]:
+    def _start_voice(self, caller_id: str, session_id: str) -> dict[str, object]:
         self._require_activation()
         with self._lock:
             self._claim(caller_id, session_id)
@@ -241,16 +247,23 @@ class VoiceCoordinator:
                 self._release_if_idle()
                 raise VoiceError("voice_start_failed") from error
             self._voice_active = True
+        self._arm_silence_timeout()
         return self.status(caller_id, session_id)
+
+    def start_voice(self, caller_id: str, session_id: str) -> dict[str, object]:
+        """Start voice for an already-authorized internal wake callback."""
+        return self._start_voice(caller_id, session_id)
 
     def stop_voice(self, caller_id: str, session_id: str) -> dict[str, object]:
         with self._lock:
             self._require_owner(caller_id, session_id)
+            self._cancel_silence_timeout_locked()
             try:
                 self._backend.stop_voice()
                 if self._wake_active:
                     self._backend.resume_wake()
             except Exception as error:
+                self._arm_silence_timeout()
                 raise VoiceError("voice_stop_failed") from error
             self._voice_active = False
             self._append("voice_status", status="idle")
@@ -368,6 +381,7 @@ class VoiceCoordinator:
             self._wake_active = False
             self._wake_test_active = False
             self._turn_active = False
+            self._cancel_silence_timeout_locked()
             self._owner = None
 
     def _on_transcript(self, transcript: str) -> None:
@@ -377,6 +391,7 @@ class VoiceCoordinator:
         with self._lock:
             if not self._voice_active:
                 return
+            self._cancel_silence_timeout_locked()
             self._append("transcript", text=text)
             if self._turn_active:
                 self._append("voice_error", code="voice_turn_busy")
@@ -431,6 +446,7 @@ class VoiceCoordinator:
             finally:
                 with self._lock:
                     self._turn_active = False
+                self._arm_silence_timeout()
 
         self._run_async(run)
 
@@ -445,6 +461,7 @@ class VoiceCoordinator:
     def _on_stop_phrase(self, _phrase: str) -> None:
         with self._lock:
             self._voice_active = False
+            self._cancel_silence_timeout_locked()
             self._append("voice_status", status="stopped_by_phrase")
             if self._wake_active:
                 try:
@@ -459,10 +476,40 @@ class VoiceCoordinator:
             self._append("wake_detected")
         if owner is not None:
             try:
-                self.start_voice(*owner)
+                self._start_voice(*owner)
             except VoiceError as error:
                 with self._lock:
                     self._append("voice_error", code=error.code)
+
+    def _arm_silence_timeout(self) -> None:
+        with self._lock:
+            if not self._voice_active or self._owner is None:
+                return
+            self._cancel_silence_timeout_locked()
+            timer = threading.Timer(
+                self._silence_timeout_seconds,
+                self._on_silence_timeout,
+            )
+            timer.daemon = True
+            self._silence_timer = timer
+            timer.start()
+
+    def _cancel_silence_timeout_locked(self) -> None:
+        timer = self._silence_timer
+        self._silence_timer = None
+        if timer is not None:
+            timer.cancel()
+
+    def _on_silence_timeout(self) -> None:
+        with self._lock:
+            if not self._voice_active or self._owner is None:
+                return
+            owner = self._owner
+        try:
+            self.stop_voice(*owner)
+        except VoiceError as error:
+            with self._lock:
+                self._append("voice_error", code=error.code)
 
     def _on_wake_test(self, phrase: str) -> None:
         with self._lock:
@@ -519,7 +566,8 @@ class VoiceCoordinator:
             ):
                 return DEFAULT_WAKE_PHRASE
             value = json.loads(self._wake_phrase_path.read_text(encoding="utf-8"))
-            return self._normalize_phrase(value["phrase"])
+            phrase = self._normalize_phrase(value["phrase"])
+            return DEFAULT_WAKE_PHRASE if phrase == "hey j l" else phrase
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             return DEFAULT_WAKE_PHRASE
 

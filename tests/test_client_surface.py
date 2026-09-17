@@ -201,18 +201,28 @@ class NativeClientSurfaceTests(unittest.TestCase):
         ):
             self.assertNotIn(live_audio_marker, host_source)
 
-    def test_voice_keeps_manual_fallback_and_uses_sherpa_candidate(self) -> None:
+    def test_voice_requires_wake_phrase_and_uses_sherpa_candidate(self) -> None:
         app_root = ROOT / "macos-app" / "Sources" / "JLAgentApp"
         view_model = (app_root / "AgentViewModel.swift").read_text(encoding="utf-8")
         content = (app_root / "ContentView.swift").read_text(encoding="utf-8")
+        companion = (app_root / "CompanionView.swift").read_text(encoding="utf-8")
         settings = (app_root / "WakePhraseSettingsView.swift").read_text(
             encoding="utf-8"
         )
+        voice_source = (ROOT / "src" / "jl_agent" / "control" / "voice.py").read_text(
+            encoding="utf-8"
+        )
 
-        self.assertIn('wakePhraseDraft = "HEY J L"', view_model)
-        self.assertIn('status.wake.phrase ?? "hey j l"', view_model)
-        self.assertIn('voiceStatus?.wake.phrase ?? "hey j l"', settings)
-        self.assertIn('Button("Call JL")', content)
+        self.assertIn('wakePhraseDraft = "HEY JL"', view_model)
+        self.assertIn('status.wake.phrase ?? "hey jl"', view_model)
+        self.assertIn('voiceStatus?.wake.phrase ?? "hey jl"', settings)
+        self.assertIn('Button("Arm Wake")', content)
+        self.assertNotIn('Button("Call JL")', content)
+        self.assertIn('Image(systemName: "text.bubble.fill")', companion)
+        self.assertIn('.accessibilityLabel("Mở chat text")', companion)
+        self.assertIn('startWake()', view_model)
+        self.assertIn("voice_requires_wake_phrase", voice_source)
+        self.assertIn("VOICE_SILENCE_TIMEOUT_SECONDS = 20.0", voice_source)
 
     def test_companion_ui_is_transparent_stateful_and_secondary_to_chat(self) -> None:
         app_root = ROOT / "macos-app" / "Sources" / "JLAgentApp"
