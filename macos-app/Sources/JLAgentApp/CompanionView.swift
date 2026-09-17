@@ -33,21 +33,24 @@ private struct CompanionCharacterImage: View {
   let state: CompanionState
 
   var body: some View {
-    if let image = NSImage(
-      contentsOf: CompanionResources.bundle.url(
-        forResource: state.assetName,
-        withExtension: "png"
-      ) ?? URL(fileURLWithPath: "")
-    ) {
-      Image(nsImage: image)
-        .resizable()
-        .scaledToFit()
-    } else {
-      Image(systemName: "questionmark.circle")
-        .resizable()
-        .scaledToFit()
-        .padding(28)
+    Group {
+      if let image = NSImage(
+        contentsOf: CompanionResources.bundle.url(
+          forResource: state.assetName,
+          withExtension: "png"
+        ) ?? URL(fileURLWithPath: "")
+      ) {
+        Image(nsImage: image)
+          .resizable()
+          .scaledToFit()
+      } else {
+        Image(systemName: "questionmark.circle")
+          .resizable()
+          .scaledToFit()
+          .padding(28)
+      }
     }
+    .id(state.assetName)
   }
 }
 
@@ -111,7 +114,7 @@ struct CompanionView: View {
 
       VStack(spacing: 5) {
         CompanionCharacterImage(state: state)
-          .frame(width: 112, height: 140)
+          .frame(width: 224, height: 280)
           .scaleEffect(reaction ? 1.04 : 1)
           .opacity(reaction ? 0.86 : 1)
           .animation(.easeOut(duration: 0.16), value: reaction)
