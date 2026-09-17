@@ -32,15 +32,22 @@ enum CompanionState: String, Equatable {
 private struct CompanionCharacterImage: View {
   let state: CompanionState
 
+  private var sourceImage: NSImage? {
+    guard let url = CompanionResources.bundle.url(
+      forResource: state.assetName,
+      withExtension: "png"
+    ) else { return nil }
+    return NSImage(contentsOf: url)
+  }
+
   var body: some View {
     Group {
-      if let image = NSImage(
-        contentsOf: CompanionResources.bundle.url(
-          forResource: state.assetName,
-          withExtension: "png"
-        ) ?? URL(fileURLWithPath: "")
-      ) {
+      if let image = sourceImage {
         Image(nsImage: image)
+          .resizable()
+          .interpolation(.high)
+          .scaledToFit()
+          .frame(width: image.size.width * 0.5, height: image.size.height * 0.5)
       } else {
         Image(systemName: "questionmark.circle")
           .padding(28)
