@@ -564,11 +564,13 @@ public struct JLRuntimeClient: Sendable {
     callerID: String,
     sessionID: String
   ) throws -> VoiceStatus {
+    let responseTimeout: TimeInterval = operation == "voice-start" ? 15 : 5
     let result = try authenticatedRequest(
       operation: operation,
       payload: payload,
       callerID: callerID,
-      sessionID: sessionID
+      sessionID: sessionID,
+      responseTimeout: responseTimeout
     )
     return try VoiceStatus(result: result)
   }
