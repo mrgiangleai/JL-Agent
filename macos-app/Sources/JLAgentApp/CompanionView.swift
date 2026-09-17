@@ -57,6 +57,47 @@ private struct CompanionCharacterImage: View {
   }
 }
 
+private struct LiveLogPanel: View {
+  let entries: [AppLogEntry]
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Image(systemName: "list.bullet.rectangle")
+        Text("Nhật ký JL")
+          .font(.caption.weight(.semibold))
+        Spacer()
+        Text(String(entries.count))
+          .font(.caption2.monospacedDigit())
+          .foregroundStyle(.secondary)
+      }
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 5) {
+          ForEach(entries.suffix(40)) { entry in
+            HStack(alignment: .top, spacing: 6) {
+              Text(entry.timestamp)
+                .foregroundStyle(.secondary)
+              Text(entry.message)
+                .foregroundStyle(.primary.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.caption2.monospaced())
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
+        }
+      }
+    }
+    .padding(10)
+    .frame(width: 300, height: 300, alignment: .topLeading)
+    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .stroke(.white.opacity(0.12), lineWidth: 0.5)
+    }
+    .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
+  }
+}
+
 struct CompanionView: View {
   @ObservedObject var agent: AgentViewModel
   let onOpenMain: () -> Void
@@ -98,6 +139,10 @@ struct CompanionView: View {
 
   var body: some View {
     HStack(alignment: .bottom, spacing: 8) {
+      if agent.liveLogEnabled {
+        LiveLogPanel(entries: agent.liveLogEntries)
+      }
+
       if let answerText {
         AnswerBubble(
           text: answerText,

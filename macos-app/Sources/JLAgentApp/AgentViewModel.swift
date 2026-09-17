@@ -3,6 +3,12 @@ import Darwin
 import Foundation
 import JLAgentCore
 
+struct AppLogEntry: Identifiable, Equatable {
+  let id = UUID()
+  let timestamp: String
+  let message: String
+}
+
 @MainActor
 final class AgentViewModel: ObservableObject {
   enum ConnectionState: String {
@@ -54,6 +60,14 @@ final class AgentViewModel: ObservableObject {
   @Published var diagnosticMessage = "Diagnostics have not been exported."
   @Published var isWorking = false
   @Published var companionAnswer: String?
+  @Published var liveLogEnabled = UserDefaults.standard.bool(forKey: "JLAgent.liveLogEnabled") {
+    didSet {
+      guard oldValue != liveLogEnabled else { return }
+      UserDefaults.standard.set(liveLogEnabled, forKey: "JLAgent.liveLogEnabled")
+      NotificationCenter.default.post(name: .jlLiveLogVisibilityChanged, object: nil)
+    }
+  }
+  @Published private(set) var liveLogEntries: [AppLogEntry] = []
 
   let callerID = "native-macos-app"
   let sessionID = UUID().uuidString.lowercased()
@@ -79,12 +93,14 @@ final class AgentViewModel: ObservableObject {
     self.signer = signer
     self.client = JLRuntimeClient(paths: paths, credentials: credentials)
     self.runtimeProcess = RuntimeProcessController(paths: paths)
+    appendLog("JL Agent đã khởi tạo")
   }
 
   func initialize() {
     guard !initialized else { return }
     initialized = true
     connectionState = .connecting
+    appendLog("Đang khởi động packaged runtime")
     let paths = paths
     let credentials = credentials
     let signer = signer
@@ -94,6 +110,7 @@ final class AgentViewModel: ObservableObject {
     Task {
       do {
         try await runtimeProcess.ensureReady()
+        appendLog("Runtime đã sẵn sàng; đang tải trạng thái")
         let observed = try await Task.detached {
           _ = try signer.provisionPublicKey(at: paths.consentPublicKey)
           _ = try credentials.loadOrImport(from: paths.credential)
@@ -103,8 +120,10 @@ final class AgentViewModel: ObservableObject {
           )
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
+        appendLog("Đã tải trạng thái runtime và kiểm tra trust")
         refreshDiagnostics()
       } catch {
+        appendLog("Runtime khởi động lỗi: \(display(error))")
         apply(error)
       }
     }
@@ -112,6 +131,7 @@ final class AgentViewModel: ObservableObject {
 
   func refreshStatus(includeOptional: Bool = false) {
     connectionState = .connecting
+    appendLog(includeOptional ? "Đang tải runtime và optional status" : "Đang tải runtime status")
     let client = client
     let signer = signer
     let callerID = callerID
@@ -130,7 +150,9 @@ final class AgentViewModel: ObservableObject {
           )
         }.value
         apply(observed.0, localConsentFingerprint: observed.1)
+        appendLog(includeOptional ? "Đã tải optional status" : "Đã tải runtime status")
       } catch {
+        appendLog("Tải runtime status lỗi: \(display(error))")
         apply(error)
       }
     }
@@ -145,14 +167,17 @@ final class AgentViewModel: ObservableObject {
     guard !isWorking else { return }
     isWorking = true
     runtimeMessage = "Restarting the packaged JL runtime…"
+    appendLog("Đang restart packaged runtime")
     Task {
       do {
         try await runtimeProcess.restart()
         isWorking = false
         runtimeMessage = "JL runtime restarted safely."
+        appendLog("Packaged runtime đã restart")
         refreshStatus()
       } catch {
         isWorking = false
+        appendLog("Restart runtime lỗi: \(display(error))")
         apply(error)
       }
     }
@@ -161,6 +186,7 @@ final class AgentViewModel: ObservableObject {
   func stopRuntime() {
     guard !isWorking else { return }
     let stopped = runtimeProcess.stopOwnedRuntime()
+    appendLog(stopped ? "Đã stop packaged runtime" : "Runtime không thuộc app; giữ nguyên process")
     runtimePID = nil
     connectionState = .unavailable
     runtimeMessage = stopped
@@ -224,6 +250,7 @@ final class AgentViewModel: ObservableObject {
     companionAnswer = nil
     assistantState = "sending"
     assistantResultText = "Sending typed assistant request..."
+    appendLog("Đang gửi typed request tới Hermes")
     let client = client
     let callerID = callerID
     let sessionID = sessionID
@@ -250,7 +277,9 @@ final class AgentViewModel: ObservableObject {
           companionAnswer = Self.companionReply(from: response.resultJSON)
         }
         isWorking = false
+        appendLog("Hermes đã trả lời typed request")
       } catch {
+        appendLog("Typed request lỗi: \(display(error))")
         handleAssistantError(error)
       }
     }
@@ -546,6 +575,7 @@ final class AgentViewModel: ObservableObject {
   }
 
   func refreshVoice() async {
+    appendLog("Đang tải voice status và events")
     let client = client
     let callerID = callerID
     let sessionID = sessionID
@@ -574,7 +604,9 @@ final class AgentViewModel: ObservableObject {
       } else {
         voiceEvents = []
       }
+      appendLog("Đã tải voice status và events")
     } catch {
+      appendLog("Tải voice status lỗi: \(display(error))")
       voiceMessage = display(error)
     }
   }
@@ -817,12 +849,22 @@ final class AgentViewModel: ObservableObject {
 
   private enum VoiceOperation: Sendable {
     case startVoice, stopVoice, startWake, stopWake
+
+    var logLabel: String {
+      switch self {
+      case .startVoice: "start voice"
+      case .stopVoice: "stop voice"
+      case .startWake: "start wake"
+      case .stopWake: "stop wake"
+      }
+    }
   }
 
   private func updateVoice(_ operation: VoiceOperation) {
     guard !isWorking else { return }
     isWorking = true
     if case .startVoice = operation { companionAnswer = nil }
+    appendLog("Đang thực hiện voice operation: \(operation.logLabel)")
     let client = client
     let callerID = callerID
     let sessionID = sessionID
@@ -843,8 +885,10 @@ final class AgentViewModel: ObservableObject {
         voiceStatus = status
         voiceMessage = Self.voiceSummary(status)
         isWorking = false
+        appendLog("Voice operation hoàn tất: \(operation.logLabel)")
         await refreshVoice()
       } catch {
+        appendLog("Voice operation lỗi: \(display(error))")
         voiceMessage = display(error)
         isWorking = false
       }
@@ -1099,6 +1143,17 @@ final class AgentViewModel: ObservableObject {
 
   private func display(_ error: Error) -> String {
     (error as? LocalizedError)?.errorDescription ?? "Request failed safely."
+  }
+
+  private func appendLog(_ message: String) {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "HH:mm:ss"
+    liveLogEntries.append(
+      AppLogEntry(timestamp: formatter.string(from: Date()), message: message)
+    )
+    if liveLogEntries.count > 80 {
+      liveLogEntries.removeFirst(liveLogEntries.count - 80)
+    }
   }
 
   private static func companionReply(from resultJSON: String) -> String? {

@@ -4,23 +4,36 @@ import SwiftUI
 
 extension Notification.Name {
   static let jlOpenMainWindow = Notification.Name("JLAgent.openMainWindow")
+  static let jlLiveLogVisibilityChanged = Notification.Name("JLAgent.liveLogVisibilityChanged")
 }
 
 @MainActor
 final class CompanionWindowController: NSObject, ObservableObject, NSWindowDelegate {
   private static let positionXKey = "JLAgent.companion.origin.x"
   private static let positionYKey = "JLAgent.companion.origin.y"
-  private static let windowSize = NSSize(width: 620, height: 400)
+  private static let compactWindowSize = NSSize(width: 620, height: 400)
+  private static let logWindowSize = NSSize(width: 820, height: 430)
 
   let agent: AgentViewModel
   private var panel: NSPanel?
 
   init(agent: AgentViewModel) {
     self.agent = agent
+    super.init()
+    NotificationCenter.default.addObserver(
+      forName: .jlLiveLogVisibilityChanged,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor in
+        self?.resizePanelForLogVisibility()
+      }
+    }
   }
 
   func show() {
     let panel = panel ?? makePanel()
+    resizePanel(panel, for: agent.liveLogEnabled)
     panel.setFrameOrigin(restoredOrigin(for: panel))
     panel.orderFrontRegardless()
   }
@@ -49,7 +62,7 @@ final class CompanionWindowController: NSObject, ObservableObject, NSWindowDeleg
     hosting.interactiveRegions = { [weak self] in self?.interactiveRegions() ?? [] }
 
     let panel = NSPanel(
-      contentRect: NSRect(origin: .zero, size: Self.windowSize),
+      contentRect: NSRect(origin: .zero, size: Self.compactWindowSize),
       styleMask: [.borderless, .nonactivatingPanel],
       backing: .buffered,
       defer: false
@@ -65,6 +78,18 @@ final class CompanionWindowController: NSObject, ObservableObject, NSWindowDeleg
     panel.contentView = hosting
     self.panel = panel
     return panel
+  }
+
+  private func resizePanelForLogVisibility() {
+    guard let panel else { return }
+    resizePanel(panel, for: agent.liveLogEnabled)
+  }
+
+  private func resizePanel(_ panel: NSPanel, for logEnabled: Bool) {
+    let size = logEnabled ? Self.logWindowSize : Self.compactWindowSize
+    guard panel.contentRect(forFrameRect: panel.frame).size != size else { return }
+    panel.setContentSize(size)
+    panel.setFrameOrigin(constrainedOrigin(panel.frame.origin, for: panel))
   }
 
   private func openMainWindow() {
@@ -110,6 +135,9 @@ final class CompanionWindowController: NSObject, ObservableObject, NSWindowDeleg
 
   private func interactiveRegions() -> [CGRect] {
     var regions = [CGRect(x: 248, y: 0, width: 372, height: 400)]
+    if agent.liveLogEnabled {
+      regions.append(CGRect(x: 0, y: 0, width: 300, height: 430))
+    }
     if agent.companionAnswer != nil {
       regions.append(CGRect(x: 0, y: 0, width: 248, height: 400))
     }

@@ -60,6 +60,15 @@ struct WakePhraseSettingsView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
+
+      Section("Nhật ký ứng dụng") {
+        Toggle("Hiển thị nhật ký cạnh Companion", isOn: $viewModel.liveLogEnabled)
+        Text(
+          "Theo dõi runtime, Hermes, text và voice. Nhật ký không ghi nội dung câu hỏi, câu trả lời, credential hoặc raw audio."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      }
     }
   }
 }
