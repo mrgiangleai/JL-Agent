@@ -1,7 +1,7 @@
 # Phase 9 Handoff — Personal Daily-Driver v1
 
-**Status:** Complete for personal-v1 implementation; deferred signing/distribution remain outside scope
-**Checkpoint:** Phase 9 Step 2 daily-use polish
+**Status:** CLOSED — personal-v1 implementation complete; deferred signing/distribution remain outside scope
+**Checkpoint:** Final Phase 9 closeout after `1adc465`
 **Target:** This Mac and this user account only
 
 ## Final result
@@ -41,6 +41,6 @@ may need a new grant after rebuilds. CuaDriver remains dependent on its own
 official identity and Accessibility/Screen Recording grants. Those are not
 blockers for personal text-chat use.
 
-Phase 9 should close out here. Stable Apple signing, TCC persistence across
+Phase 9 is closed out here. Stable Apple signing, TCC persistence across
 rebuilds, notarization, distribution, wake-word dependency installation, and
-new capabilities remain deferred.
+new capabilities remain deferred. No new implementation phase is planned.

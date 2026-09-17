@@ -2,9 +2,10 @@
 
 Last updated: 2026-09-17 ICT
 
-## Phase 9 Step 2 final checkpoint — daily-use polish
+## Phase 9 closeout — personal daily-driver v1 complete
 
-- Step 2 daily-use polish is complete. Ordinary readiness now performs only
+- Phase 9 personal-v1 implementation is complete. Step 2 daily-use polish is
+  complete, and ordinary readiness now performs only
   authenticated runtime status work; CuaDriver and automation probes are
   deferred until an explicit `Refresh`, `Recheck`, or `Refresh Diagnostics`
   action. Voice and Skills remain explicit-action paths.
@@ -18,12 +19,11 @@ Last updated: 2026-09-17 ICT
   Swift compile-only parsing, `git diff --check`, and packaged release
   `JL Agent.app` build with the nested voice host. No live voice/CUA test,
   dependency installation, signing work, or Hermes change was performed.
-- Nothing in the remaining unblocked scope prevents personal text-chat daily
-  use on this Mac. Microphone TCC and CuaDriver grants remain normal
-  user-managed prerequisites for those optional paths; stable signing,
-  notarization, distribution, and wake-word dependency installation remain
-  deferred. Recommend Phase 9 closeout; do not create another implementation
-  phase.
+- Nothing in the approved scope blocks personal text-chat daily use on this
+  Mac. Microphone TCC and CuaDriver grants remain normal user-managed
+  prerequisites for those optional paths; stable signing, notarization,
+  distribution, and wake-word dependency installation remain deferred. Phase 9
+  is closed; no new implementation phase is planned.
 
 ## Phase 9 product decision — personal v1 permission/signing boundary
 
