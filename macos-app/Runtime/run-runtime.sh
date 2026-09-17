@@ -2,7 +2,8 @@
 set -euo pipefail
 
 runtime_root="${0:A:h}"
-export PYTHONPATH="$runtime_root/src:$runtime_root/upstream/hermes-agent"
+lazy_target="${HOME}/Library/Caches/JL Agent/python"
+export PYTHONPATH="$runtime_root/src:$runtime_root/upstream/hermes-agent:$lazy_target"
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONUNBUFFERED=1
 
