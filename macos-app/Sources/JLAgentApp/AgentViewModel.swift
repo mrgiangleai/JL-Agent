@@ -168,6 +168,10 @@ final class AgentViewModel: ObservableObject {
       : "JL runtime is not owned by this app and was left running."
   }
 
+  func stopRuntimeForTermination() {
+    _ = runtimeProcess.stopOwnedRuntime()
+  }
+
   func refreshCredential() {
     isWorking = true
     let credentials = credentials
@@ -756,14 +760,7 @@ final class AgentViewModel: ObservableObject {
       return
     }
     companionAnswer = nil
-    if voiceStatus == nil {
-      Task {
-        await refreshVoice()
-        startVoice()
-      }
-    } else {
-      startVoice()
-    }
+    startVoice()
   }
 
   func dismissCompanionAnswer() {

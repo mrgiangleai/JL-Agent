@@ -112,6 +112,7 @@ public final class RuntimeProcessController: @unchecked Sendable {
   @discardableResult
   public func stopOwnedRuntime() -> Bool {
     guard let process = currentProcess(), process.isRunning else { return false }
+    let runtimePID = readyRuntimePID()
     process.terminate()
     let deadline = Date().addingTimeInterval(3)
     while process.isRunning && Date() < deadline {
@@ -119,6 +120,12 @@ public final class RuntimeProcessController: @unchecked Sendable {
     }
     if process.isRunning {
       _ = kill(process.processIdentifier, SIGKILL)
+    }
+    if let runtimePID,
+      runtimePID != process.processIdentifier,
+      isProcessAlive(runtimePID)
+    {
+      _ = kill(runtimePID, SIGTERM)
     }
     lock.lock()
     self.process = nil
@@ -131,6 +138,21 @@ public final class RuntimeProcessController: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     return process
+  }
+
+  private func readyRuntimePID() -> pid_t? {
+    guard
+      let data = try? Data(contentsOf: paths.readiness, options: [.uncached]),
+      let object = try? JSONSerialization.jsonObject(with: data),
+      let payload = object as? [String: Any],
+      let value = payload["pid"] as? Int,
+      value > 0
+    else { return nil }
+    return pid_t(value)
+  }
+
+  private func isProcessAlive(_ pid: pid_t) -> Bool {
+    kill(pid, 0) == 0 || errno == EPERM
   }
 
   private func isReady() -> Bool {

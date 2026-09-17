@@ -12,6 +12,9 @@ struct JLAgentDesktopApp: App {
     let companionController = CompanionWindowController(agent: viewModel)
     _viewModel = StateObject(wrappedValue: viewModel)
     _companionController = StateObject(wrappedValue: companionController)
+    appDelegate.runtimeStopper = { [weak viewModel] in
+      viewModel?.stopRuntimeForTermination()
+    }
     DispatchQueue.main.async {
       viewModel.initialize()
       companionController.show()

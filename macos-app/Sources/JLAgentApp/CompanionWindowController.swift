@@ -129,6 +129,8 @@ private final class CompanionHostingView<Content: View>: NSHostingView<Content> 
 
 @MainActor
 final class JLAgentAppDelegate: NSObject, NSApplicationDelegate {
+  var runtimeStopper: (() -> Void)?
+
   func applicationDidFinishLaunching(_ notification: Notification) {
     DispatchQueue.main.async {
       NSApp.windows
@@ -140,5 +142,9 @@ final class JLAgentAppDelegate: NSObject, NSApplicationDelegate {
     }
     guard Bundle.main.bundleURL.pathExtension == "app" else { return }
     try? SMAppService.mainApp.register()
+  }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    runtimeStopper?()
   }
 }
