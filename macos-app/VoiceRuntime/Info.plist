@@ -23,6 +23,6 @@
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>JL Voice Runtime uses the microphone only when you explicitly start local voice or wake-word listening.</string>
+  <string>JL Voice Runtime uses the microphone only while you explicitly run a Hermes Voice session.</string>
 </dict>
 </plist>

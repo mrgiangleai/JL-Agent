@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -94,6 +95,12 @@ class AssistantAdmission:
         self.clock = clock or (lambda: datetime.now().astimezone())
 
     def handle(self, envelope: IPCRequestEnvelope) -> IPCResponseEnvelope:
+        print(
+            "jl_voice_trace "
+            f"stage=assistant_admission_enter mono_ms={time.monotonic_ns() // 1_000_000} "
+            f"mode={envelope.payload.get('input_mode', 'typed')}",
+            flush=True,
+        )
         try:
             text, foreground_app, timezone = self._decode(envelope.payload)
         except ValueError as error:
@@ -121,8 +128,24 @@ class AssistantAdmission:
             )
 
         try:
+            print(
+                f"jl_voice_trace stage=hermes_brain_request mono_ms={time.monotonic_ns() // 1_000_000}",
+                flush=True,
+            )
             reply = self.turn_runner(text).strip()[:32_768]
+            print(
+                "jl_voice_trace "
+                f"stage=hermes_brain_response mono_ms={time.monotonic_ns() // 1_000_000} "
+                f"chars={len(reply)}",
+                flush=True,
+            )
         except Exception:
+            print(
+                "jl_voice_trace "
+                f"stage=hermes_brain_failed mono_ms={time.monotonic_ns() // 1_000_000} "
+                "error_type=exception",
+                flush=True,
+            )
             return IPCResponseEnvelope.failure(
                 envelope.request_id,
                 "conversation_failed",

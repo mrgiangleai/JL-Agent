@@ -56,7 +56,6 @@ from .control.voice import (
     HermesTextOnlyTurnRunner,
     HermesVoiceBackend,
     VoiceCoordinator,
-    macos_say_tts_config,
     voice_activation_approved_from_environment,
     voice_enabled_from_environment,
 )
@@ -268,6 +267,48 @@ def _write_private_bytes(path: Path, payload: bytes) -> None:
             pass
 
 
+def _ensure_native_voice_stt_auto_detect(hermes_home: Path) -> str:
+    """Keep Hermes native Voice multilingual when the user has no STT choice.
+
+    Hermes 0.21.2's merged defaults use ``stt.language: en``. JL does not
+    choose a language or replace Hermes STT; it only prevents that implicit
+    English default from discarding short Vietnamese utterances. An explicit
+    global or local language remains authoritative.
+    """
+    config_path = hermes_home / "config.yaml"
+    if not config_path.exists():
+        return "missing"
+    try:
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return "unreadable"
+    if not isinstance(raw, dict):
+        return "invalid"
+    stt = raw.get("stt")
+    if stt is None:
+        stt = {}
+        raw["stt"] = stt
+    if not isinstance(stt, dict):
+        return "explicit-invalid"
+    local = stt.get("local")
+    explicit_global = stt.get("language")
+    explicit_local = local.get("language") if isinstance(local, dict) else None
+    if (
+        isinstance(explicit_global, str) and explicit_global.strip()
+    ) or (
+        isinstance(explicit_local, str) and explicit_local.strip()
+    ):
+        return "explicit"
+    if explicit_global == "":
+        return "auto"
+    stt["language"] = ""
+    _write_private_bytes(
+        config_path,
+        yaml.safe_dump(raw, sort_keys=False, allow_unicode=True).encode("utf-8"),
+    )
+    return "auto-written"
+
+
 def _migrate_legacy_hermes_files(
     source: Path | None, destination: Path
 ) -> str:
@@ -288,7 +329,12 @@ def _migrate_legacy_hermes_files(
             if name == "config.yaml" and target_bytes != legacy_bytes:
                 prepared[target] = _merged_legacy_config(legacy_path, target)
             elif target_bytes != legacy_bytes:
-                raise RuntimeError(f"user-data migration conflict: {target}")
+                # Credentials and environment files are mutable runtime state.
+                # Once JL has a destination copy, it is authoritative; never
+                # replace it with a stale legacy snapshot or block startup.
+                # _read_private_legacy_file above still validates ownership,
+                # regular-file type, and symlink safety for the destination.
+                continue
         else:
             prepared[target] = legacy_bytes
 
@@ -310,6 +356,18 @@ def prepare_library_state(
     _ensure_private_directory(paths.hermes.parent)
     _ensure_private_directory(paths.models.parent)
     _ensure_private_directory(paths.logs)
+    migration_marker = paths.root / "storage-migration.json"
+    migration_already_completed = False
+    if migration_marker.exists() and not migration_marker.is_symlink():
+        try:
+            marker = json.loads(migration_marker.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            marker = None
+        migration_already_completed = (
+            isinstance(marker, dict)
+            and marker.get("schema_version") == 1
+            and marker.get("state") == "ready"
+        )
     legacy_model_sources = (
         (legacy_project_root / ".jl-agent" / "models",)
         if legacy_project_root is not None
@@ -321,8 +379,10 @@ def prepare_library_state(
         "hermes": _migrate_tree_group(
             (paths.root / "hermes-home", paths.root / "automation"), paths.hermes
         ),
-        "legacy_hermes": _migrate_legacy_hermes_files(
-            legacy_hermes_home, paths.hermes
+        "legacy_hermes": (
+            "already-present"
+            if migration_already_completed
+            else _migrate_legacy_hermes_files(legacy_hermes_home, paths.hermes)
         ),
         "models": _migrate_tree_group(legacy_model_sources, paths.models),
     }
@@ -511,6 +571,7 @@ class JLRuntimeService:
                 "ready": True,
                 "pid": os.getpid(),
                 "protocol_version": 1,
+                "jl_runtime_compatibility": 2,
                 "transport": "AF_UNIX",
                 "hermes_revision": HERMES_REVISION,
                 "state": "ready" if self.consent_available else "degraded",
@@ -700,19 +761,12 @@ def build_runtime_service(
     voice = VoiceCoordinator(
         backend=HermesVoiceBackend(
             root / "upstream" / "hermes-agent",
-            model_cache_root=(
-                paths.models
-            ),
-            sherpa_manifest_path=(
-                root / "config" / "models" / "sherpa-gigaspeech-kws-fp32.json"
-            ),
-            tts_config=macos_say_tts_config() if sys.platform == "darwin" else None,
+            model_cache_root=paths.models,
         ),
         assistant_handler=handler,
         credential=runtime_credential,
         enabled=voice_enabled_from_environment(),
         activation_approved=voice_activation_approved_from_environment(),
-        wake_phrase_path=paths.root / "wake-phrase.json",
     )
     handler.voice_handler = voice.handle
     handler.assistant_handler = assistant.handle
@@ -844,6 +898,29 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     os.environ["HERMES_HOME"] = str(runtime_paths.hermes)
+    stt_profile = _ensure_native_voice_stt_auto_detect(runtime_paths.hermes)
+    config_payload: dict[str, object] = {}
+    try:
+        loaded_config = yaml.safe_load(
+            (runtime_paths.hermes / "config.yaml").read_text(encoding="utf-8")
+        )
+        if isinstance(loaded_config, dict):
+            config_payload = loaded_config
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        pass
+    model_config = config_payload.get("model")
+    model_config = model_config if isinstance(model_config, dict) else {}
+    print(
+        "jl_voice_trace stage=runtime_environment "
+        f"python={sys.executable} hermes_home={runtime_paths.hermes} "
+        f"hermes_revision={HERMES_REVISION} "
+        f"config_provider={model_config.get('provider', 'unset')} "
+        f"config_model={model_config.get('default', 'unset')} "
+        f"stt_language={stt_profile} "
+        f"auth_present={(runtime_paths.hermes / 'auth.json').is_file()}",
+        flush=True,
+    )
+    # JL Voice keeps Hermes' native STT implementation, with an explicit
 
     service = build_runtime_service(runtime_root=arguments.runtime_dir)
 
@@ -854,6 +931,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, stop)
     try:
         service.start()
+        print("jl_voice_trace stage=runtime_ready", flush=True)
         service.serve_forever()
     except Exception as error:
         print(f"JL Agent runtime startup failed: {error}", file=sys.stderr)

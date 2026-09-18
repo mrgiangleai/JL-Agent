@@ -1,8 +1,12 @@
 # Phase 9 Handoff — Personal Daily-Driver v1
 
-**Status:** CLOSED — personal-v1 implementation complete; deferred signing/distribution remain outside scope
+**Status:** CLOSED — personal-v1 and Hermes-only Voice milestone accepted; deferred signing/distribution remain outside scope
 **Checkpoint:** Final Phase 9 closeout after `1adc465`
 **Target:** This Mac and this user account only
+
+The current Voice checkpoint is documented separately in
+[`PHASE9_VOICE_HANDOFF.md`](PHASE9_VOICE_HANDOFF.md). It supersedes the
+earlier Voice-specific “not live-tested” caveats in this historical handoff.
 
 ## Final result
 
@@ -24,8 +28,9 @@ submodule change was made.
 - Swift compile-only parse for app/core/voice sources: passed
 - `git diff --check`: passed
 - Packaged release build with nested `JL Voice Runtime.app`: passed
-- No live voice/CUA run, dependency installation, TCC modification, or
-  signing/distribution work was performed.
+- Cua live use, dependency installation, TCC modification, and
+  signing/distribution work were outside this Voice checkpoint. Hermes-only
+  Voice real-mic acceptance is recorded in `PHASE9_VOICE_HANDOFF.md`.
 
 ## Personal-v1 launch notes
 
@@ -35,11 +40,11 @@ Launch the packaged artifact:
 macos-app/.build/arm64-apple-macosx/release/JL Agent.app
 ```
 
-Text chat is ready when the main status shows `Sẵn sàng`. Voice still needs
-normal user-granted Microphone permission for `com.jlagent.voice-runtime` and
-may need a new grant after rebuilds. CuaDriver remains dependent on its own
-official identity and Accessibility/Screen Recording grants. Those are not
-blockers for personal text-chat use.
+Text chat is ready when the main status shows `Sẵn sàng`. Voice requires the
+normal user-granted Microphone permission for `com.jlagent.voice-runtime`; the
+current packaged Voice acceptance passed with that grant. CuaDriver remains
+dependent on its own official identity and Accessibility/Screen Recording
+grants. Those are not blockers for personal text-chat use.
 
 Phase 9 is closed out here. Stable Apple signing, TCC persistence across
 rebuilds, notarization, distribution, wake-word dependency installation, and

@@ -20,10 +20,13 @@ public enum RuntimeProcessError: Error, LocalizedError, Sendable {
 
 /// Starts only the packaged runtime owned by this app instance.
 ///
-/// An already-ready runtime is treated as the owner for the current session;
-/// the runtime's authenticated socket and stale-endpoint checks remain the
-/// final duplicate-owner authority.
+/// A ready runtime is reused only while this controller owns its launcher.
+/// A marker left by a crashed or force-terminated app is reclaimed before a
+/// new launcher is started, preventing an orphaned runtime from becoming a
+/// hidden duplicate owner.
 public final class RuntimeProcessController: @unchecked Sendable {
+  private static let runtimeCompatibility = 2
+
   public let paths: RuntimePaths
 
   private let launcherURL: URL
@@ -51,7 +54,7 @@ public final class RuntimeProcessController: @unchecked Sendable {
   }
 
   public func ensureReady(timeout: TimeInterval = 15) async throws {
-    if isReady() { return }
+    if currentProcess() != nil && isReady() { return }
     try startIfNeeded()
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
@@ -67,8 +70,15 @@ public final class RuntimeProcessController: @unchecked Sendable {
   }
 
   public func startIfNeeded() throws {
-    if isReady() { return }
-    if let process = currentProcess(), process.isRunning { return }
+    if let process = currentProcess(), process.isRunning {
+      if hasStaleReadinessMarker() {
+        _ = stopOwnedRuntime()
+      } else {
+        return
+      }
+    }
+    try recoverUnownedRuntimeIfNeeded()
+    try recoverStaleRuntimeIfNeeded()
     guard FileManager.default.isExecutableFile(atPath: launcherURL.path) else {
       throw RuntimeProcessError.launcherUnavailable(launcherURL)
     }
@@ -111,21 +121,34 @@ public final class RuntimeProcessController: @unchecked Sendable {
 
   @discardableResult
   public func stopOwnedRuntime() -> Bool {
-    guard let process = currentProcess(), process.isRunning else { return false }
+    let process = currentProcess()
     let runtimePID = readyRuntimePID()
-    process.terminate()
-    let deadline = Date().addingTimeInterval(3)
-    while process.isRunning && Date() < deadline {
-      Thread.sleep(forTimeInterval: 0.05)
+    let processIsRunning = process?.isRunning == true
+    let runtimeIsRunning = runtimePID.map(isProcessAlive) == true
+    guard processIsRunning || runtimeIsRunning else { return false }
+
+    if let process, process.isRunning {
+      process.terminate()
+      let deadline = Date().addingTimeInterval(3)
+      while process.isRunning && Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.05)
+      }
+      if process.isRunning {
+        _ = kill(process.processIdentifier, SIGKILL)
+      }
     }
-    if process.isRunning {
-      _ = kill(process.processIdentifier, SIGKILL)
-    }
+
     if let runtimePID,
-      runtimePID != process.processIdentifier,
       isProcessAlive(runtimePID)
     {
       _ = kill(runtimePID, SIGTERM)
+      let deadline = Date().addingTimeInterval(3)
+      while isProcessAlive(runtimePID) && Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.05)
+      }
+      if isProcessAlive(runtimePID) {
+        _ = kill(runtimePID, SIGKILL)
+      }
     }
     lock.lock()
     self.process = nil
@@ -161,11 +184,80 @@ public final class RuntimeProcessController: @unchecked Sendable {
       let object = try? JSONSerialization.jsonObject(with: data),
       let payload = object as? [String: Any],
       payload["ready"] as? Bool == true,
+      payload["jl_runtime_compatibility"] as? Int == Self.runtimeCompatibility,
       let pid = payload["pid"] as? Int,
       pid > 0,
       FileManager.default.fileExists(atPath: paths.socket.path)
     else { return false }
     return kill(pid_t(pid), 0) == 0 || errno == EPERM
+  }
+
+  private func hasStaleReadinessMarker() -> Bool {
+    guard FileManager.default.fileExists(atPath: paths.readiness.path) else { return false }
+    guard
+      let data = try? Data(contentsOf: paths.readiness, options: [.uncached]),
+      let object = try? JSONSerialization.jsonObject(with: data),
+      let payload = object as? [String: Any]
+    else { return true }
+    guard
+      payload["ready"] as? Bool == true,
+      payload["jl_runtime_compatibility"] as? Int == Self.runtimeCompatibility,
+      let pid = payload["pid"] as? Int,
+      pid > 0
+    else {
+      return true
+    }
+    guard FileManager.default.fileExists(atPath: paths.socket.path) else {
+      return true
+    }
+    return !(kill(pid_t(pid), 0) == 0 || errno == EPERM)
+  }
+
+  private func recoverStaleRuntimeIfNeeded() throws {
+    guard hasStaleReadinessMarker() else { return }
+    guard
+      let data = try? Data(contentsOf: paths.readiness, options: [.uncached]),
+      let object = try? JSONSerialization.jsonObject(with: data),
+      let payload = object as? [String: Any]
+    else { return }
+    guard
+      let details = try? FileManager.default.attributesOfItem(atPath: paths.readiness.path),
+      (details[.ownerAccountID] as? NSNumber)?.intValue ?? -1 == Int(getuid()),
+      let mode = (details[.posixPermissions] as? NSNumber)?.intValue,
+      mode == 0o600
+    else { return }
+    guard let value = payload["pid"] as? Int, value > 0 else { return }
+
+    let pid = pid_t(value)
+    if isProcessAlive(pid) {
+      _ = kill(pid, SIGTERM)
+      let deadline = Date().addingTimeInterval(2)
+      while isProcessAlive(pid) && Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.05)
+      }
+      if isProcessAlive(pid) {
+        throw RuntimeProcessError.startFailed("stale JL runtime is still active")
+      }
+    }
+  }
+
+  private func recoverUnownedRuntimeIfNeeded() throws {
+    guard currentProcess() == nil else { return }
+    guard let runtimePID = readyRuntimePID(), isProcessAlive(runtimePID) else {
+      return
+    }
+
+    _ = kill(runtimePID, SIGTERM)
+    let deadline = Date().addingTimeInterval(3)
+    while isProcessAlive(runtimePID) && Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.05)
+    }
+    if isProcessAlive(runtimePID) {
+      _ = kill(runtimePID, SIGKILL)
+    }
+    if isProcessAlive(runtimePID) {
+      throw RuntimeProcessError.startFailed("orphaned JL runtime is still active")
+    }
   }
 
   private func openDiagnosticLog() throws -> FileHandle {

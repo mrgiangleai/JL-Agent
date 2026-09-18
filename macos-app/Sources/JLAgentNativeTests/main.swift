@@ -68,6 +68,8 @@ enum NativeContractTests {
     try expiredConsentIsRejectedLocally()
     try executeUsesBoundedLongResponseTimeout()
     try voiceControlUsesAuthenticatedBoundedIPC()
+    try wakeStartUsesVoiceStartupTimeout()
+    try wakeStopUsesCleanupTimeout()
     try voiceEventsRejectRawAudioFields()
     try wakePhraseSettingsUseAuthenticatedTestGate()
     try automationUsesAuthenticatedBoundedIPC()
@@ -75,7 +77,7 @@ enum NativeContractTests {
     try keychainCredentialImportsAndRefreshes()
     try consentKeySignsWithoutExportingPrivateMaterial()
     try missingEnrolledConsentKeyRequiresExplicitRotation()
-    print("21 native contract tests passed")
+    print("23 native contract tests passed")
   }
 
   private static func skillsUseBoundedAuthenticatedIPC() throws {
@@ -276,6 +278,52 @@ enum NativeContractTests {
     )
     try check(status.voice.active, "active voice state was lost")
     try check(!status.toolExecutionEnabled, "voice tools were enabled")
+  }
+
+  private static func wakeStartUsesVoiceStartupTimeout() throws {
+    let transport = StubTransport { request in
+      let envelope = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "wake envelope is malformed"
+      )
+      try check(envelope["operation"] as? String == "wake-start", "wrong wake operation")
+      return try response(
+        for: request,
+        ok: true,
+        result: voiceStatusResult(voiceActive: false),
+        error: nil
+      )
+    }
+    _ = try makeClient(transport: transport).startWake(
+      callerID: "native-app", sessionID: "session-1"
+    )
+    try check(
+      transport.timeouts == [voiceStartupTimeoutSeconds],
+      "wake start did not use the bounded voice startup timeout"
+    )
+  }
+
+  private static func wakeStopUsesCleanupTimeout() throws {
+    let transport = StubTransport { request in
+      let envelope = try require(
+        JSONSerialization.jsonObject(with: request) as? [String: Any],
+        "wake stop envelope is malformed"
+      )
+      try check(envelope["operation"] as? String == "wake-stop", "wrong wake stop operation")
+      return try response(
+        for: request,
+        ok: true,
+        result: voiceStatusResult(voiceActive: false),
+        error: nil
+      )
+    }
+    _ = try makeClient(transport: transport).stopWake(
+      callerID: "native-app", sessionID: "session-1"
+    )
+    try check(
+      transport.timeouts == [voiceStopTimeoutSeconds],
+      "wake stop did not use the cleanup timeout"
+    )
   }
 
   private static func voiceEventsRejectRawAudioFields() throws {

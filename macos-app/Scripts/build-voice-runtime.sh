@@ -17,9 +17,11 @@ swift build -c release --product JLVoiceRuntime
 app_dir="$bin_dir/JL Voice Runtime.app"
 contents="$app_dir/Contents"
 rm -rf "$app_dir"
+rm -rf "$contents/Resources/JLRuntime"
 mkdir -p "$contents/MacOS" "$contents/Resources/JLRuntime/src" \
   "$contents/Resources/JLRuntime/config" \
-  "$contents/Resources/JLRuntime/upstream/hermes-agent"
+  "$contents/Resources/JLRuntime/upstream/hermes-agent" \
+  "$contents/Resources/JLRuntime/python"
 cp "$bin_dir/JLVoiceRuntime" "$contents/MacOS/JLVoiceRuntime"
 cp "$app_root/VoiceRuntime/Info.plist" "$contents/Info.plist"
 rsync -a --delete \
@@ -29,7 +31,7 @@ rsync -a --delete \
   --exclude='local*' --exclude='*.key' --exclude='*.pem' \
   "$app_root/../config/" "$contents/Resources/JLRuntime/config/"
 rsync -a --delete \
-  --exclude='.git/' --exclude='__pycache__/' --exclude='*.py[cod]' \
+  --exclude='.git' --exclude='__pycache__/' --exclude='*.py[cod]' \
   --exclude='/tests/' --exclude='/tests-js/' --exclude='/apps/' \
   --exclude='/website/' --exclude='/docs/' --exclude='/contributors/' \
   --exclude='/evals/' --exclude='/optional-skills/' --exclude='/ui-tui/' \

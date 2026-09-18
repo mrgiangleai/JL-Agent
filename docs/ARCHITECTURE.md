@@ -3,8 +3,7 @@
 ## Decision
 
 Hermes Agent is the single main core. JL Agent composes around its supported
-interfaces and keeps the pinned upstream checkout unmodified. OpenJarvis and
-PersonalJarvis are design/component references, not secondary agent runtimes.
+interfaces and keeps the pinned upstream checkout unmodified.
 
 ```text
 macOS Native App

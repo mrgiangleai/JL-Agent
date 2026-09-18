@@ -24,6 +24,8 @@
     <string>13.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>JL Voice Runtime uses the microphone only while you explicitly run a Hermes Voice session.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

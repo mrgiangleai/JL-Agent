@@ -50,6 +50,14 @@ The bootstrap script keeps generated state in the repository-local `.venv` and
 ignored `.jl-agent/` cache. It does not run the interactive setup, write API
 keys, or modify the pinned upstream.
 
+## Current Voice direction
+
+JL Voice is Hermes-only. Clicking the cat starts the pinned Hermes native Voice
+loop; JL does not add a wake phrase, language, VAD, endpoint, TTS, barge-in, or
+echo layer. See
+[`docs/HERMES_VOICE_STRATEGY.md`](docs/HERMES_VOICE_STRATEGY.md) for the
+upgrade and re-audit procedure.
+
 ## Repository boundaries
 
 - `upstream/hermes-agent/`: immutable, pinned Hermes source of truth.

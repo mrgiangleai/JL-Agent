@@ -17,6 +17,7 @@ from jl_agent.runtime_service import (
     build_runtime_service,
     inspect_runtime_lifecycle,
     main,
+    _ensure_native_voice_stt_auto_detect,
     prepare_library_state,
 )
 
@@ -62,6 +63,24 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.service.shutdown()
         self.temporary.cleanup()
+
+    def test_native_voice_stt_defaults_to_hermes_auto_detect(self) -> None:
+        self.paths.hermes.mkdir(parents=True, mode=0o700)
+        config = self.paths.hermes / "config.yaml"
+        config.write_text(
+            "model:\n  provider: openai-codex\n", encoding="utf-8"
+        )
+
+        self.assertEqual(_ensure_native_voice_stt_auto_detect(self.paths.hermes), "auto-written")
+        self.assertIn("language: ''", config.read_text(encoding="utf-8"))
+
+    def test_native_voice_stt_preserves_explicit_language(self) -> None:
+        self.paths.hermes.mkdir(parents=True, mode=0o700)
+        config = self.paths.hermes / "config.yaml"
+        config.write_text("stt:\n  language: en\n", encoding="utf-8")
+
+        self.assertEqual(_ensure_native_voice_stt_auto_detect(self.paths.hermes), "explicit")
+        self.assertEqual(config.read_text(encoding="utf-8"), "stt:\n  language: en\n")
 
     def test_startup_readiness_and_graceful_shutdown(self) -> None:
         self.service.start()
@@ -137,7 +156,7 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
             0o600,
         )
 
-    def test_library_layout_fails_closed_on_migration_conflict(self) -> None:
+    def test_library_layout_fails_closed_on_model_migration_conflict(self) -> None:
         legacy_root = Path(self.temporary.name) / "checkout"
         legacy_models = legacy_root / ".jl-agent" / "models"
         legacy_models.mkdir(parents=True, mode=0o700)
@@ -156,6 +175,22 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
             )
 
         self.assertEqual((legacy_models / "model.bin").read_bytes(), b"legacy")
+
+    def test_legacy_hermes_auth_conflict_keeps_existing_destination(self) -> None:
+        legacy = Path(self.temporary.name) / "legacy-hermes"
+        legacy.mkdir(mode=0o700)
+        (legacy / "auth.json").write_text('{"token":"legacy"}\n')
+        self.paths.hermes.mkdir(parents=True, mode=0o700)
+        (self.paths.hermes / "auth.json").write_text('{"token":"current"}\n')
+
+        migration = prepare_library_state(
+            self.paths, legacy_hermes_home=legacy
+        )
+
+        self.assertEqual(migration["legacy_hermes"], "already-present")
+        self.assertEqual(
+            (self.paths.hermes / "auth.json").read_text(), '{"token":"current"}\n'
+        )
 
     def test_legacy_hermes_profile_is_forwarded_without_overwriting_jl_config(self) -> None:
         legacy = Path(self.temporary.name) / "legacy-hermes"
@@ -183,6 +218,21 @@ class RuntimeServiceLifecycleTests(unittest.TestCase):
             '{"active_provider":"openai-codex"}\n',
         )
         self.assertTrue((legacy / "auth.json").exists())
+
+    def test_completed_legacy_migration_does_not_recompare_mutable_auth(self) -> None:
+        legacy = Path(self.temporary.name) / "legacy-hermes"
+        legacy.mkdir(mode=0o700)
+        (legacy / "auth.json").write_text('{"token":"initial"}\n')
+
+        first = prepare_library_state(self.paths, legacy_hermes_home=legacy)
+        self.assertEqual(first["legacy_hermes"], "migrated")
+        (legacy / "auth.json").write_text('{"token":"rotated"}\n')
+
+        second = prepare_library_state(self.paths, legacy_hermes_home=legacy)
+        self.assertEqual(second["legacy_hermes"], "already-present")
+        self.assertEqual(
+            (self.paths.hermes / "auth.json").read_text(), '{"token":"initial"}\n'
+        )
 
     def test_stopped_runtime_credential_can_rotate_without_exposure(self) -> None:
         root = Path(self.temporary.name) / "rotation"

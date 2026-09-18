@@ -64,9 +64,7 @@ of repeated system prompts.
 
 ## Computer-use safety
 
-PersonalJarvis provides useful patterns in `jarvis/cu/target_guard.py`,
-`jarvis/cu/ledger.py`, `jarvis/cu/verify.py`, and `jarvis/safety/tool_executor.py`.
-JL Agent will adapt the concepts, not embed its whole runtime:
+JL Agent applies the following narrow target and postcondition controls:
 
 1. Capture the foreground app/window identity and geometry with the proposal.
 2. Re-check target identity immediately before input; fail closed if focus moved.
@@ -105,8 +103,8 @@ Untrusted content never gains approval authority.
 - Treat skills/plugins as code with agent-process privilege; review all scripts,
   hooks, and binaries, not only their manifest.
 - Prefer isolated MCP/subprocess integration for externally maintained code.
-- Preserve Apache-2.0 LICENSE/NOTICE and modified-file notices if OpenJarvis or
-  PersonalJarvis code is later adapted.
+- Preserve Apache-2.0 LICENSE/NOTICE and modified-file notices if external code
+  is later adapted.
 
 ## Logging and incident response
 

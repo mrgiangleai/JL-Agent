@@ -9,6 +9,18 @@ struct AppLogEntry: Identifiable, Equatable {
   let message: String
 }
 
+enum VoiceDisplayPhase: Equatable {
+  case sleeping
+  case wake
+  case wakeDetected
+  case listening
+  case transcript(String)
+  case thinking
+  case speaking
+  case acting
+  case error(String)
+}
+
 @MainActor
 final class AgentViewModel: ObservableObject {
   enum ConnectionState: String {
@@ -38,8 +50,18 @@ final class AgentViewModel: ObservableObject {
   @Published var isSkillWorking = false
   @Published var computerUseStatus: ComputerUseStatus?
   @Published var voiceStatus: VoiceStatus?
+  @Published var voiceEngineStatus: VoiceEngineStatus?
   @Published var voiceEvents: [VoiceEvent] = []
   @Published var voiceMessage = "Voice is off by default."
+  @Published var voiceSettings = VoiceSettings(
+    language: "auto", silenceThreshold: 600, silenceDuration: 1.0, followUpTimeout: 3.0
+  )
+  @Published var microphoneTestStatus = MicrophoneTestStatus(active: false, level: 0, state: "idle")
+  @Published var voiceSettingsMessage = "Voice settings have not been loaded."
+  @Published var pttTranscript = ""
+  @Published private(set) var latestVoiceTranscript = ""
+  @Published private(set) var voiceWakeDiagnostic: String?
+  @Published private(set) var voiceDisplayPhase: VoiceDisplayPhase = .sleeping
   @Published var automationStatus: AutomationStatus?
   @Published var schedules: [AutomationSchedule] = []
   @Published var scheduleHistory: [AutomationExecution] = []
@@ -49,9 +71,6 @@ final class AgentViewModel: ObservableObject {
   @Published var reminderScheduleText = "5m"
   @Published var reminderRecurring = false
   @Published var pendingAutomationConsent: ConsentChallenge?
-  @Published var wakePhraseDraft = "HEY JL"
-  @Published var testedWakePhrase: String?
-  @Published var wakePhraseMessage = "Test a phrase before making it the default."
   @Published var runtimePID: Int?
   @Published var hermesRevision = "unknown"
   @Published var runtimeMessage = "Starting the packaged JL runtime…"
@@ -84,6 +103,13 @@ final class AgentViewModel: ObservableObject {
   private var pendingConsentDeadline: ContinuousClock.Instant?
   private var pendingAutomationConsentDeadline: ContinuousClock.Instant?
   private var initialized = false
+  private var voiceOperationInFlight = false
+  private var voiceRefreshInFlight = false
+  private var voiceEventsInitialized = false
+  private var lastVoiceEventSequence = 0
+  private var voicePhaseResetTask: Task<Void, Never>?
+  private var voiceListeningTimeoutTask: Task<Void, Never>?
+  private var voiceRefreshTask: Task<Void, Never>?
 
   init(paths: RuntimePaths = RuntimePaths()) {
     self.paths = paths
@@ -114,12 +140,16 @@ final class AgentViewModel: ObservableObject {
         let observed = try await Task.detached {
           _ = try signer.provisionPublicKey(at: paths.consentPublicKey)
           _ = try credentials.loadOrImport(from: paths.credential)
-          return (
-            try client.status(callerID: callerID, sessionID: sessionID),
-            try signer.publicKeyFingerprint()
-          )
+          return try signer.publicKeyFingerprint()
         }.value
-        apply(observed.0, localConsentFingerprint: observed.1)
+        appendLog("Trust đã sẵn sàng; đang tải voice")
+        await refreshVoice()
+        await refreshVoiceSettings()
+        startVoiceRefreshLoop()
+        let status = try await Task.detached {
+          try client.status(callerID: callerID, sessionID: sessionID)
+        }.value
+        apply(status, localConsentFingerprint: observed)
         appendLog("Đã tải trạng thái runtime và kiểm tra trust")
         refreshDiagnostics()
       } catch {
@@ -575,7 +605,9 @@ final class AgentViewModel: ObservableObject {
   }
 
   func refreshVoice() async {
-    appendLog("Đang tải voice status và events")
+    guard !voiceRefreshInFlight else { return }
+    voiceRefreshInFlight = true
+    defer { voiceRefreshInFlight = false }
     let client = client
     let callerID = callerID
     let sessionID = sessionID
@@ -584,30 +616,149 @@ final class AgentViewModel: ObservableObject {
         try client.voiceStatus(callerID: callerID, sessionID: sessionID)
       }.value
       voiceStatus = status
-      if wakePhraseDraft.isEmpty { wakePhraseDraft = status.wake.phrase ?? "hey jl" }
+      voiceEngineStatus = try? await Task.detached {
+        try client.voiceEngineStatus(callerID: callerID, sessionID: sessionID)
+      }.value
       voiceMessage = Self.voiceSummary(status)
       if status.ownedByCurrentSession {
         voiceEvents = try await Task.detached {
           try client.voiceEvents(callerID: callerID, sessionID: sessionID)
         }.value
+        observeVoiceEvents()
         if let reply = voiceEvents.last(where: { $0.kind == "reply" })?.text,
           !reply.isEmpty
         {
           companionAnswer = reply
         }
-        if let passed = voiceEvents.last(where: {
-          $0.kind == "wake_phrase_test" && $0.status == "passed"
-        })?.text {
-          testedWakePhrase = passed
-          wakePhraseMessage = "Test passed. This phrase can now become the default."
+        if let transcript = voiceEvents.last(where: { $0.kind == "ptt_transcript" })?.text,
+          !transcript.isEmpty
+        {
+          pttTranscript = transcript
         }
       } else {
         voiceEvents = []
+        voiceEventsInitialized = false
+        latestVoiceTranscript = ""
+        voiceWakeDiagnostic = nil
+        voiceDisplayPhase = .sleeping
       }
-      appendLog("Đã tải voice status và events")
     } catch {
-      appendLog("Tải voice status lỗi: \(display(error))")
-      voiceMessage = display(error)
+      let message = display(error)
+      if voiceMessage != message { appendLog("Tải voice status lỗi: \(message)") }
+      voiceMessage = message
+    }
+  }
+
+  func refreshVoiceSettings() async {
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    do {
+      voiceSettings = try await Task.detached {
+        try client.voiceSettings(callerID: callerID, sessionID: sessionID)
+      }.value
+      voiceSettingsMessage = "Voice settings đã tải từ Hermes."
+    } catch {
+      voiceSettingsMessage = display(error)
+    }
+  }
+
+  func saveVoiceSettings(
+    language: String,
+    silenceThreshold: Int,
+    silenceDuration: Double,
+    followUpTimeout: Double
+  ) {
+    guard !isWorking else { return }
+    isWorking = true
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    Task {
+      do {
+        voiceSettings = try await Task.detached {
+          try client.setVoiceSettings(
+            language: language,
+            silenceThreshold: silenceThreshold,
+            silenceDuration: silenceDuration,
+            followUpTimeout: followUpTimeout,
+            callerID: callerID,
+            sessionID: sessionID
+          )
+        }.value
+        voiceSettingsMessage = "Đã lưu Voice settings cho Hermes."
+      } catch {
+        voiceSettingsMessage = display(error)
+      }
+      isWorking = false
+    }
+  }
+
+  func startMicrophoneTest() {
+    guard !isWorking else { return }
+    isWorking = true
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    Task {
+      do {
+        microphoneTestStatus = try await Task.detached {
+          try client.startMicrophoneTest(callerID: callerID, sessionID: sessionID)
+        }.value
+      } catch {
+        voiceSettingsMessage = display(error)
+      }
+      isWorking = false
+    }
+  }
+
+  func refreshMicrophoneTest() async {
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    do {
+      microphoneTestStatus = try await Task.detached {
+        try client.microphoneTestStatus(callerID: callerID, sessionID: sessionID)
+      }.value
+    } catch {
+      voiceSettingsMessage = display(error)
+    }
+  }
+
+  func stopMicrophoneTest() {
+    guard !isWorking else { return }
+    isWorking = true
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    Task {
+      do {
+        microphoneTestStatus = try await Task.detached {
+          try client.stopMicrophoneTest(callerID: callerID, sessionID: sessionID)
+        }.value
+      } catch {
+        voiceSettingsMessage = display(error)
+      }
+      isWorking = false
+    }
+  }
+
+  func testVoiceTTS(language: String) {
+    guard !isWorking else { return }
+    isWorking = true
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    Task {
+      do {
+        try await Task.detached {
+          try client.testVoiceTTS(language: language, callerID: callerID, sessionID: sessionID)
+        }.value
+        voiceSettingsMessage = "Đã phát thử TTS bằng Hermes."
+      } catch {
+        voiceSettingsMessage = display(error)
+      }
+      isWorking = false
     }
   }
 
@@ -783,18 +934,34 @@ final class AgentViewModel: ObservableObject {
 
   func startVoice() { updateVoice(.startVoice) }
   func stopVoice() { updateVoice(.stopVoice) }
-  func startWake() { updateVoice(.startWake) }
-  func stopWake() { updateVoice(.stopWake) }
-
-  func toggleVoiceFromCompanion() {
-    if voiceStatus?.voice.active == true {
+  func toggleVoiceSession() {
+    if voiceStatus?.ownedByCurrentSession == true,
+      voiceStatus?.voice.active == true
+    {
       stopVoice()
-      return
-    }
-    if voiceStatus?.wake.active == true {
-      stopWake()
     } else {
-      startWake()
+      startVoice()
+    }
+  }
+
+  func setVoiceEngine(_ engine: String) {
+    guard !isWorking, voiceEngineStatus?.selected != engine else { return }
+    isWorking = true
+    appendLog("Đang chọn voice engine: \(engine)")
+    let client = client
+    let callerID = callerID
+    let sessionID = sessionID
+    Task {
+      do {
+        voiceEngineStatus = try await Task.detached {
+          return try client.setVoiceEngine(engine, callerID: callerID, sessionID: sessionID)
+        }.value
+        appendLog("Đã chọn voice engine: \(engine)")
+      } catch {
+        appendLog("Chọn voice engine lỗi: \(display(error))")
+      }
+      isWorking = false
+      await refreshVoice()
     }
   }
 
@@ -802,69 +969,20 @@ final class AgentViewModel: ObservableObject {
     companionAnswer = nil
   }
 
-  func testWakePhrase() {
-    let phrase = normalizedWakePhrase
-    guard !isWorking else { return }
-    isWorking = true
-    Task {
-      do {
-        voiceStatus = try await Task.detached {
-          try self.client.testWakePhrase(
-            phrase, callerID: self.callerID, sessionID: self.sessionID
-          )
-        }.value
-        testedWakePhrase = nil
-        wakePhraseMessage = "Listening for ‘\(phrase)’. Say it, then refresh the test result."
-      } catch {
-        wakePhraseMessage = display(error)
-      }
-      isWorking = false
-    }
-  }
-
-  func saveWakePhrase() {
-    let phrase = normalizedWakePhrase
-    guard testedWakePhrase == phrase, !isWorking else { return }
-    isWorking = true
-    Task {
-      do {
-        voiceStatus = try await Task.detached {
-          try self.client.setWakePhrase(
-            phrase, callerID: self.callerID, sessionID: self.sessionID
-          )
-        }.value
-        wakePhraseMessage = "Default wake phrase saved."
-      } catch {
-        wakePhraseMessage = display(error)
-      }
-      isWorking = false
-    }
-  }
-
-  var normalizedWakePhrase: String {
-    wakePhraseDraft.split(whereSeparator: { $0.isWhitespace })
-      .joined(separator: " ").lowercased()
-  }
-
-  var canSaveWakePhrase: Bool {
-    testedWakePhrase == normalizedWakePhrase && !isWorking
-  }
-
   private enum VoiceOperation: Sendable {
-    case startVoice, stopVoice, startWake, stopWake
+    case startVoice, stopVoice
 
     var logLabel: String {
       switch self {
       case .startVoice: "start voice"
       case .stopVoice: "stop voice"
-      case .startWake: "start wake"
-      case .stopWake: "stop wake"
       }
     }
   }
 
   private func updateVoice(_ operation: VoiceOperation) {
-    guard !isWorking else { return }
+    guard !isWorking, !voiceOperationInFlight else { return }
+    voiceOperationInFlight = true
     isWorking = true
     if case .startVoice = operation { companionAnswer = nil }
     appendLog("Đang thực hiện voice operation: \(operation.logLabel)")
@@ -879,20 +997,26 @@ final class AgentViewModel: ObservableObject {
             try client.startVoice(callerID: callerID, sessionID: sessionID)
           case .stopVoice:
             try client.stopVoice(callerID: callerID, sessionID: sessionID)
-          case .startWake:
-            try client.startWake(callerID: callerID, sessionID: sessionID)
-          case .stopWake:
-            try client.stopWake(callerID: callerID, sessionID: sessionID)
           }
         }.value
         voiceStatus = status
         voiceMessage = Self.voiceSummary(status)
+        switch operation {
+        case .startVoice:
+          voiceDisplayPhase = .listening
+        case .stopVoice:
+          voiceDisplayPhase = .sleeping
+        }
+        voiceOperationInFlight = false
         isWorking = false
         appendLog("Voice operation hoàn tất: \(operation.logLabel)")
         await refreshVoice()
       } catch {
         appendLog("Voice operation lỗi: \(display(error))")
         voiceMessage = display(error)
+        voiceDisplayPhase = .error(display(error))
+        voiceStatus = nil
+        voiceOperationInFlight = false
         isWorking = false
       }
     }
@@ -1159,6 +1283,143 @@ final class AgentViewModel: ObservableObject {
     }
   }
 
+  private func observeVoiceEvents() {
+    guard let latestSequence = voiceEvents.map(\.sequence).max() else { return }
+    if !voiceEventsInitialized {
+      voiceEventsInitialized = true
+      lastVoiceEventSequence = latestSequence
+      applyLatestVoiceStatusIfNeeded()
+      return
+    }
+    let newEvents = voiceEvents
+      .filter { $0.sequence > lastVoiceEventSequence }
+      .sorted { $0.sequence < $1.sequence }
+    lastVoiceEventSequence = latestSequence
+    for event in newEvents {
+      switch event.kind {
+      case "wake_detected":
+        voiceWakeDiagnostic = nil
+        voiceDisplayPhase = .wakeDetected
+        scheduleVoiceListeningTimeout()
+      case "transcript":
+        voiceWakeDiagnostic = nil
+        voiceListeningTimeoutTask?.cancel()
+        latestVoiceTranscript = event.text ?? ""
+        voiceDisplayPhase = .transcript(event.text ?? "Đã nhận lời nói")
+      case "partial_transcript":
+        voiceWakeDiagnostic = nil
+        latestVoiceTranscript = event.text ?? ""
+        voiceDisplayPhase = .transcript(event.text ?? "Đang nghe…")
+      case "stt_transcript":
+        voiceWakeDiagnostic = nil
+        voiceListeningTimeoutTask?.cancel()
+        latestVoiceTranscript = event.text ?? ""
+        // Keep the complete final transcript visible until the processing
+        // status arrives; no artificial UI delay hides what JL heard.
+        voiceDisplayPhase = .transcript(event.text ?? "Đã nhận lời nói")
+      case "ptt_transcript":
+        voiceDisplayPhase = .transcript(event.text ?? "Đã nhận lời nói")
+      case "reply":
+        voiceWakeDiagnostic = nil
+        voiceListeningTimeoutTask?.cancel()
+        voiceDisplayPhase = .speaking
+      case "tts_playback_complete":
+        voiceWakeDiagnostic = "Đã phát xong · đang chờ bạn nói tiếp"
+        voiceListeningTimeoutTask?.cancel()
+        voiceDisplayPhase = .listening
+      case "voice_status":
+        if let status = event.status { applyVoiceStatus(status) }
+      case "voice_error":
+        voiceListeningTimeoutTask?.cancel()
+        voiceDisplayPhase = .error(event.code ?? "voice_error")
+      default:
+        break
+      }
+    }
+  }
+
+  private func applyLatestVoiceStatusIfNeeded() {
+    guard let status = voiceEvents.reversed().first(where: {
+      $0.kind == "voice_status" && $0.status != nil
+    })?.status else { return }
+    applyVoiceStatus(status)
+  }
+
+  private func applyVoiceStatus(_ status: String) {
+    switch status {
+    case "pipeline_starting":
+      voiceWakeDiagnostic = "Voice đang khởi động…"
+      voiceDisplayPhase = .sleeping
+    case "pipeline_ready":
+      voiceWakeDiagnostic = "Bấm cat để mở mic · Hermes Voice đang chờ lời nói"
+    case "thinking":
+      voiceWakeDiagnostic = nil
+      voiceListeningTimeoutTask?.cancel()
+      voiceDisplayPhase = .thinking
+    case "processing":
+      voiceWakeDiagnostic = nil
+      voiceListeningTimeoutTask?.cancel()
+      voiceDisplayPhase = .thinking
+    case "stt_rejected":
+      voiceListeningTimeoutTask?.cancel()
+      voiceDisplayPhase = .error("Không chắc chắn nội dung nghe được · hãy thử lại")
+    case "tts_started":
+      voiceWakeDiagnostic = nil
+      voiceListeningTimeoutTask?.cancel()
+      voiceDisplayPhase = .speaking
+    case "tts_provider:local", "tts_provider:gemini":
+      break
+    case "command_listening", "listening":
+      voiceWakeDiagnostic = nil
+      voiceDisplayPhase = .listening
+    case "conversational_listening":
+      voiceWakeDiagnostic = "Đang chờ câu tiếp theo"
+      voiceListeningTimeoutTask?.cancel()
+      voiceDisplayPhase = .listening
+    case "wake_waiting":
+      voiceWakeDiagnostic = nil
+      voiceListeningTimeoutTask?.cancel()
+      voiceDisplayPhase = .sleeping
+    default:
+      break
+    }
+  }
+
+  private func startVoiceRefreshLoop() {
+    guard voiceRefreshTask == nil else { return }
+    voiceRefreshTask = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .milliseconds(200))
+        guard let self, !Task.isCancelled else { return }
+        guard self.voiceStatus?.voice.active == true
+          || self.voiceDisplayPhase != .sleeping
+        else { continue }
+        await self.refreshVoice()
+      }
+    }
+  }
+
+  private func scheduleVoicePhase(_ phase: VoiceDisplayPhase, after duration: Duration) {
+    voicePhaseResetTask?.cancel()
+    voicePhaseResetTask = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: duration)
+      guard !Task.isCancelled, let self else { return }
+      self.voiceDisplayPhase = phase
+    }
+  }
+
+  private func scheduleVoiceListeningTimeout() {
+    voiceListeningTimeoutTask?.cancel()
+    voiceListeningTimeoutTask = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: .seconds(22))
+      guard !Task.isCancelled, let self else { return }
+      guard self.voiceDisplayPhase == .wakeDetected || self.voiceDisplayPhase == .listening else {
+        return
+      }
+      self.voiceDisplayPhase = .error("Không nhận được câu lệnh · hãy thử lại")
+    }
+  }
+
   private static func companionReply(from resultJSON: String) -> String? {
     guard let data = resultJSON.data(using: .utf8),
       let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -1212,14 +1473,8 @@ final class AgentViewModel: ObservableObject {
     if !status.voice.available {
       return status.voice.details ?? "Microphone or speech-to-text is unavailable."
     }
-    if !status.wake.available {
-      return status.wake.hint ?? "Wake phrase is unavailable."
-    }
-    if status.voice.active { return "Listening for a spoken turn. Tools are disabled." }
-    if status.wake.active {
-      return "Wake word armed: \(status.wake.phrase ?? "configured phrase")."
-    }
-    return "Voice is ready but not listening. Tools are disabled."
+    if status.voice.active { return "Hermes Voice session đang mở; microphone đang hoạt động." }
+    return "Voice session đang ngủ; microphone đã đóng."
   }
 
   private static func automationSummary(_ status: AutomationStatus) -> String {

@@ -364,12 +364,103 @@ public struct JLRuntimeClient: Sendable {
     try voiceControl(operation: "voice-status", callerID: callerID, sessionID: sessionID)
   }
 
+  public func voiceSettings(callerID: String, sessionID: String) throws -> VoiceSettings {
+    let result = try authenticatedRequest(
+      operation: "voice-settings", payload: [:], callerID: callerID, sessionID: sessionID
+    )
+    return try VoiceSettings(result: result)
+  }
+
+  public func setVoiceSettings(
+    language: String,
+    silenceThreshold: Int,
+    silenceDuration: Double,
+    followUpTimeout: Double,
+    callerID: String,
+    sessionID: String
+  ) throws -> VoiceSettings {
+    let result = try authenticatedRequest(
+      operation: "voice-settings-set",
+      payload: [
+        "language": .string(language),
+        "silence_threshold": .integer(silenceThreshold),
+        "silence_duration": .number(silenceDuration),
+        "follow_up_timeout": .number(followUpTimeout),
+      ],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try VoiceSettings(result: result)
+  }
+
+  public func startMicrophoneTest(callerID: String, sessionID: String) throws -> MicrophoneTestStatus {
+    let result = try authenticatedRequest(
+      operation: "voice-mic-test-start", payload: [:], callerID: callerID, sessionID: sessionID
+    )
+    return try MicrophoneTestStatus(result: result)
+  }
+
+  public func microphoneTestStatus(callerID: String, sessionID: String) throws -> MicrophoneTestStatus {
+    let result = try authenticatedRequest(
+      operation: "voice-mic-test-status", payload: [:], callerID: callerID, sessionID: sessionID
+    )
+    return try MicrophoneTestStatus(result: result)
+  }
+
+  public func stopMicrophoneTest(callerID: String, sessionID: String) throws -> MicrophoneTestStatus {
+    let result = try authenticatedRequest(
+      operation: "voice-mic-test-stop", payload: [:], callerID: callerID, sessionID: sessionID
+    )
+    return try MicrophoneTestStatus(result: result)
+  }
+
+  public func testVoiceTTS(language: String, callerID: String, sessionID: String) throws {
+    _ = try authenticatedRequest(
+      operation: "voice-tts-test",
+      payload: ["language": .string(language)],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+  }
+
+  public func voiceEngineStatus(callerID: String, sessionID: String) throws -> VoiceEngineStatus {
+    let result = try authenticatedRequest(
+      operation: "voice-engine-status",
+      payload: [:],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try VoiceEngineStatus(result: result)
+  }
+
+  public func setVoiceEngine(
+    _ engine: String,
+    callerID: String,
+    sessionID: String
+  ) throws -> VoiceEngineStatus {
+    let result = try authenticatedRequest(
+      operation: "voice-engine-set",
+      payload: ["engine": .string(engine)],
+      callerID: callerID,
+      sessionID: sessionID
+    )
+    return try VoiceEngineStatus(result: result)
+  }
+
   public func startVoice(callerID: String, sessionID: String) throws -> VoiceStatus {
     try voiceControl(operation: "voice-start", callerID: callerID, sessionID: sessionID)
   }
 
   public func stopVoice(callerID: String, sessionID: String) throws -> VoiceStatus {
     try voiceControl(operation: "voice-stop", callerID: callerID, sessionID: sessionID)
+  }
+
+  public func startPushToTalk(callerID: String, sessionID: String) throws -> VoiceStatus {
+    try voiceControl(operation: "voice-ptt-start", callerID: callerID, sessionID: sessionID)
+  }
+
+  public func stopPushToTalk(callerID: String, sessionID: String) throws -> VoiceStatus {
+    try voiceControl(operation: "voice-ptt-stop", callerID: callerID, sessionID: sessionID)
   }
 
   public func startWake(callerID: String, sessionID: String) throws -> VoiceStatus {
@@ -564,7 +655,12 @@ public struct JLRuntimeClient: Sendable {
     callerID: String,
     sessionID: String
   ) throws -> VoiceStatus {
-    let responseTimeout: TimeInterval = operation == "voice-start" ? 15 : 5
+    let responseTimeout: TimeInterval =
+      operation == "voice-start" || operation == "wake-start"
+      ? voiceStartupTimeoutSeconds
+      : operation == "voice-stop" || operation == "wake-stop"
+      ? voiceStopTimeoutSeconds
+      : 5
     let result = try authenticatedRequest(
       operation: operation,
       payload: payload,

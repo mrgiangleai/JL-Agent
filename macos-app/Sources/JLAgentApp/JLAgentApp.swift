@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct JLAgentDesktopApp: App {
   @NSApplicationDelegateAdaptor(JLAgentAppDelegate.self) private var appDelegate
-  @StateObject private var viewModel = AgentViewModel()
+  @StateObject private var viewModel: AgentViewModel
   @StateObject private var companionController: CompanionWindowController
 
   init() {

@@ -3,6 +3,8 @@ import Foundation
 public let protocolVersion = 1
 public let maximumMessageBytes = 64 * 1024
 public let defaultTimeoutSeconds: TimeInterval = 2
+public let voiceStartupTimeoutSeconds: TimeInterval = 35
+public let voiceStopTimeoutSeconds: TimeInterval = 15
 public let assistantResponseTimeoutSeconds: TimeInterval = 30
 public let executionResponseTimeoutSeconds: TimeInterval = 90
 
@@ -483,6 +485,116 @@ public struct VoiceStatus: Equatable, Sendable {
   }
 }
 
+public struct VoiceSettings: Equatable, Sendable {
+  public let language: String
+  public let silenceThreshold: Int
+  public let silenceDuration: Double
+  public let followUpTimeout: Double
+
+  public init(
+    language: String,
+    silenceThreshold: Int,
+    silenceDuration: Double,
+    followUpTimeout: Double
+  ) {
+    self.language = language
+    self.silenceThreshold = silenceThreshold
+    self.silenceDuration = silenceDuration
+    self.followUpTimeout = followUpTimeout
+  }
+
+  init(result: [String: JSONValue]) throws {
+    guard
+      let language = result["language"]?.stringValue,
+      let threshold = result["silence_threshold"]?.intValue,
+      let duration = result["silence_duration"]?.doubleValue,
+      let followUp = result["follow_up_timeout"]?.doubleValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.language = language
+    self.silenceThreshold = threshold
+    self.silenceDuration = duration
+    self.followUpTimeout = followUp
+  }
+}
+
+public struct MicrophoneTestStatus: Equatable, Sendable {
+  public let active: Bool
+  public let level: Int
+  public let state: String
+
+  public init(active: Bool, level: Int, state: String) {
+    self.active = active
+    self.level = level
+    self.state = state
+  }
+
+  init(result: [String: JSONValue]) throws {
+    guard
+      let active = result["active"]?.boolValue,
+      let level = result["level"]?.intValue,
+      let state = result["state"]?.stringValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.active = active
+    self.level = level
+    self.state = state
+  }
+}
+
+public struct VoiceEngineInfo: Equatable, Sendable {
+  public let available: Bool
+  public let label: String
+  public let revision: String
+
+  init(value: [String: JSONValue]) throws {
+    guard
+      Set(value.keys) == ["available", "label", "revision"],
+      let available = value["available"]?.boolValue,
+      let label = value["label"]?.stringValue,
+      let revision = value["revision"]?.stringValue
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.available = available
+    self.label = label
+    self.revision = revision
+  }
+}
+
+public struct VoiceEngineStatus: Equatable, Sendable {
+  public let selected: String
+  public let active: Bool
+  public let engines: [String: VoiceEngineInfo]
+
+  init(result: [String: JSONValue]) throws {
+    guard
+      Set(result.keys) == ["selected", "active", "engines"],
+      let selected = result["selected"]?.stringValue,
+      let active = result["active"]?.boolValue,
+      let rawEngines = result["engines"]?.objectValue,
+      Set(rawEngines.keys) == ["hermes"]
+    else {
+      throw RuntimeClientError.malformedResponse
+    }
+    var engines: [String: VoiceEngineInfo] = [:]
+    for (name, value) in rawEngines {
+      guard let item = value.objectValue else {
+        throw RuntimeClientError.malformedResponse
+      }
+      engines[name] = try VoiceEngineInfo(value: item)
+    }
+    guard engines[selected] != nil else {
+      throw RuntimeClientError.malformedResponse
+    }
+    self.selected = selected
+    self.active = active
+    self.engines = engines
+  }
+}
+
 public struct VoiceEvent: Identifiable, Equatable, Sendable {
   public var id: Int { sequence }
   public let sequence: Int
@@ -490,11 +602,28 @@ public struct VoiceEvent: Identifiable, Equatable, Sendable {
   public let text: String?
   public let status: String?
   public let code: String?
+  public let turnID: String?
+  public let stage: String?
+  public let audioRef: String?
+  public let audioDurationMilliseconds: Int?
+  public let segmentCount: Int?
+  public let confidence: Double?
+  public let noSpeechProbability: Double?
+  public let language: String?
+  public let rawText: String?
+  public let elapsedMilliseconds: Double?
+  public let timestampNanoseconds: Int?
+  public let reason: String?
 
   init(value: JSONValue) throws {
     guard
       let item = value.objectValue,
-      Set(item.keys).isSubset(of: ["sequence", "kind", "text", "status", "code"]),
+      Set(item.keys).isSubset(of: [
+        "sequence", "kind", "text", "status", "code", "turn_id", "stage",
+        "audio_ref", "audio_duration_ms", "segment_count", "confidence",
+        "no_speech_prob", "language", "raw_text", "elapsed_ms", "timestamp_ns",
+        "reason",
+      ]),
       let sequence = item["sequence"]?.intValue,
       sequence > 0,
       let kind = item["kind"]?.stringValue,
@@ -507,11 +636,34 @@ public struct VoiceEvent: Identifiable, Equatable, Sendable {
     self.text = item["text"]?.stringValue
     self.status = item["status"]?.stringValue
     self.code = item["code"]?.stringValue
+    self.turnID = item["turn_id"]?.stringValue
+    self.stage = item["stage"]?.stringValue
+    self.audioRef = item["audio_ref"]?.stringValue
+    self.audioDurationMilliseconds = item["audio_duration_ms"]?.intValue
+    self.segmentCount = item["segment_count"]?.intValue
+    self.confidence = Self.numberValue(item["confidence"])
+    self.noSpeechProbability = Self.numberValue(item["no_speech_prob"])
+    self.language = item["language"]?.stringValue
+    self.rawText = item["raw_text"]?.stringValue
+    self.elapsedMilliseconds = Self.numberValue(item["elapsed_ms"])
+    self.timestampNanoseconds = item["timestamp_ns"]?.intValue
+    self.reason = item["reason"]?.stringValue
+  }
+
+  private static func numberValue(_ value: JSONValue?) -> Double? {
+    switch value {
+    case .number(let number): return number
+    case .integer(let integer): return Double(integer)
+    default: return nil
+    }
   }
 
   private static let allowedKinds: Set<String> = [
-    "voice_status", "wake_status", "wake_detected", "transcript", "reply",
-    "voice_error", "wake_phrase_test", "wake_phrase_saved",
+    "voice_status", "wake_status", "ptt_status", "ptt_transcript", "wake_detected", "wake_ack", "transcript", "reply",
+    "partial_transcript",
+    "stt_transcript", "hermes_input", "hermes_response", "tts_playback_complete",
+    "voice_error", "wake_phrase_test", "wake_phrase_saved", "turn_started",
+    "turn_provenance", "voice_timing",
   ]
 }
 

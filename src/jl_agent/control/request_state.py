@@ -178,9 +178,19 @@ class SecureControlRequestHandler:
             return IPCResponseEnvelope.success(envelope.request_id, {"events": events})
         if envelope.operation in {
             "voice-status",
+            "voice-settings",
+            "voice-settings-set",
             "voice-start",
             "voice-stop",
+            "voice-mic-test-start",
+            "voice-mic-test-status",
+            "voice-mic-test-stop",
+            "voice-tts-test",
+            "voice-ptt-start",
+            "voice-ptt-stop",
             "voice-events",
+            "voice-engine-status",
+            "voice-engine-set",
             "wake-start",
             "wake-stop",
             "wake-test-start",
@@ -199,12 +209,8 @@ class SecureControlRequestHandler:
                     )
                 )
             except Exception as error:
-                from .voice import VoiceError
-
                 lifecycle.transition(RequestState.FAILED)
-                code = (
-                    error.code if isinstance(error, VoiceError) else "voice_unavailable"
-                )
+                code = getattr(error, "code", None) or "voice_unavailable"
                 return self._failure(envelope, lifecycle, code)
             return IPCResponseEnvelope.success(envelope.request_id, result)
         if envelope.operation.startswith("automation-"):

@@ -307,18 +307,14 @@ struct ContentView: View {
             Button("Refresh") { Task { await viewModel.refreshVoice() } }
           }
           HStack {
-            Button("Arm Wake") { viewModel.startWake() }
-              .disabled(!canStartWake)
-            Button("Stop Voice") { viewModel.stopVoice() }
-              .disabled(viewModel.voiceStatus?.voice.active != true || viewModel.isWorking)
-            Button("Stop Wake") { viewModel.stopWake() }
-              .disabled(viewModel.voiceStatus?.wake.active != true || viewModel.isWorking)
-            Spacer()
+            Text("Voice session: click-to-start")
+              .font(.caption)
             Text("Voice tool execution: disabled")
               .font(.caption.bold())
               .foregroundStyle(.green)
+            Spacer()
           }
-          Text("Voice chỉ bắt đầu sau wake phrase \"hey JL\" và tự tắt sau 20 giây im lặng.")
+          Text("Bấm cat để mở microphone và bắt đầu Hermes Voice native. Khi Hermes phát hiện inactivity thật sự hoặc bạn bấm lại, mic sẽ đóng.")
             .font(.caption)
             .foregroundStyle(.secondary)
           if !viewModel.voiceEvents.isEmpty {
@@ -496,18 +492,6 @@ struct ContentView: View {
       ? "signed \(status.driverBundleID ?? "CuaDriver") / \(status.driverTeamID ?? "team")"
       : "CuaDriver.app identity unavailable"
     return "cua-driver\(version), \(identity): \(status.detail)"
-  }
-
-  private var canStartVoice: Bool {
-    guard let status = viewModel.voiceStatus else { return false }
-    return status.enabled && status.activationApproved && status.voice.available
-      && !status.voice.active && !viewModel.isWorking
-  }
-
-  private var canStartWake: Bool {
-    guard let status = viewModel.voiceStatus else { return false }
-    return status.enabled && status.activationApproved && status.wake.available
-      && !status.wake.active && !viewModel.isWorking
   }
 
   private var automationColor: Color {

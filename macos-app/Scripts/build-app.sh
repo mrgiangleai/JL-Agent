@@ -45,8 +45,9 @@ rm -rf "$iconset"
 rm -rf "$contents/Resources/JLAgent_JLAgentApp.bundle"
 cp -R "$bin_dir/JLAgent_JLAgentApp.bundle" "$contents/Resources/JLAgent_JLAgentApp.bundle"
 runtime_bundle="$contents/Resources/JLRuntime"
+rm -rf "$runtime_bundle"
 mkdir -p "$runtime_bundle/src" "$runtime_bundle/config" \
-  "$runtime_bundle/upstream/hermes-agent"
+  "$runtime_bundle/upstream/hermes-agent" "$runtime_bundle/python"
 rm -rf "$contents/Resources/JLVoiceRuntime.app"
 cp -R "$voice_app" "$contents/Resources/JLVoiceRuntime.app"
 rsync -a --delete \
@@ -56,7 +57,7 @@ rsync -a --delete \
   --exclude='local*' --exclude='*.key' --exclude='*.pem' \
   "$project_root/config/" "$runtime_bundle/config/"
 rsync -a --delete \
-  --exclude='.git/' --exclude='__pycache__/' --exclude='*.py[cod]' \
+  --exclude='.git' --exclude='__pycache__/' --exclude='*.py[cod]' \
   --exclude='/tests/' --exclude='/tests-js/' --exclude='/apps/' \
   --exclude='/website/' --exclude='/docs/' --exclude='/contributors/' \
   --exclude='/evals/' --exclude='/optional-skills/' --exclude='/ui-tui/' \

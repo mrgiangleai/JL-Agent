@@ -134,13 +134,17 @@ final class CompanionWindowController: NSObject, ObservableObject, NSWindowDeleg
   }
 
   private func interactiveRegions() -> [CGRect] {
-    var regions = [CGRect(x: 248, y: 0, width: 372, height: 400)]
+    var regions: [CGRect] = []
+    var contentX: CGFloat = 0
     if agent.liveLogEnabled {
       regions.append(CGRect(x: 0, y: 0, width: 300, height: 430))
+      contentX = 308
     }
     if agent.companionAnswer != nil {
-      regions.append(CGRect(x: 0, y: 0, width: 248, height: 400))
+      regions.append(CGRect(x: contentX, y: 0, width: 230, height: 400))
+      contentX += 238
     }
+    regions.append(CGRect(x: contentX, y: 0, width: 260, height: 400))
     return regions
   }
 }

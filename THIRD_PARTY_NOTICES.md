@@ -14,8 +14,5 @@ vendored, linked, or executed by JL Agent Phase 1:
 
 - OpenJarvis, commit `b1055c983b25b298c7e97723847d215df18de4a8`,
   Apache-2.0, https://github.com/open-jarvis/OpenJarvis
-- PersonalJarvis, commit `e56c43b0289643f738199abc02ce30d7bdbc8c0f`,
-  Apache-2.0, https://github.com/PersonalJarvis/PersonalJarvis
-
 If code is later adapted from an Apache-2.0 source, Phase 2 must preserve its
 license and NOTICE obligations and identify modified files.

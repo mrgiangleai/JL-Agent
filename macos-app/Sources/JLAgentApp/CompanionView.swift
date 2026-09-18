@@ -11,14 +11,27 @@ private enum CompanionResources {
 }
 
 enum CompanionState: String, Equatable {
-  case idle, listening, thinking, working, success, attention, error, sleeping
+  case idle, wake, listening, transcript, processing, speaking, conversationalListening
+  case thinking, working, success, attention, error, sleeping
 
-  var assetName: String { rawValue }
+  var assetName: String {
+    switch self {
+    case .wake, .listening, .conversationalListening: return "listening"
+    case .transcript, .processing: return "thinking"
+    case .speaking: return "speaking"
+    default: return rawValue
+    }
+  }
 
   var accessibilityLabel: String {
     switch self {
     case .idle: "JL đang sẵn sàng"
+    case .wake: "JL Voice đang lắng nghe"
     case .listening: "JL đang lắng nghe"
+    case .transcript: "JL đã nhận transcript"
+    case .processing: "JL đang xử lý"
+    case .speaking: "JL đang nói"
+    case .conversationalListening: "JL đang chờ bạn nói tiếp"
     case .thinking: "JL đang suy nghĩ"
     case .working: "JL đang thực hiện"
     case .success: "JL đã hoàn tất"
@@ -116,9 +129,25 @@ struct CompanionView: View {
     {
       return .error
     }
-    if agent.voiceStatus?.voice.active == true || agent.voiceStatus?.wake.active == true {
+    switch agent.voiceDisplayPhase {
+    case .wake:
+      return .wake
+    case .wakeDetected:
+      return .wake
+    case .listening:
       return .listening
+    case .transcript:
+      return .transcript
+    case .thinking, .acting:
+      return .processing
+    case .speaking:
+      return .speaking
+    case .error:
+      return .error
+    case .sleeping:
+      break
     }
+    if agent.voiceStatus?.voice.active == true { return .listening }
     if agent.isWorking {
       return agent.decision == "ALLOW" || agent.resultText.contains("executing")
         ? .working : .thinking
@@ -130,16 +159,52 @@ struct CompanionView: View {
 
   private var answerText: String? { agent.companionAnswer }
 
-  private var voiceHelp: String {
+  private var voiceStateText: String {
+    switch agent.voiceDisplayPhase {
+    case .wake:
+      return "Hermes Voice đang lắng nghe"
+    case .wakeDetected:
+      return "Đã nhận wake word · Đang nghe"
+    case .listening:
+      return "Đang lắng nghe"
+    case .transcript(let text):
+      return "Đã nghe: \(text)"
+    case .thinking:
+      if !agent.latestVoiceTranscript.isEmpty {
+        return "Đang suy nghĩ · Đã nghe: \(agent.latestVoiceTranscript)"
+      }
+      return "Đang suy nghĩ"
+    case .speaking:
+      return "Đang trả lời bằng giọng nói"
+    case .acting:
+      return "Đang thực hiện"
+    case .error(let message):
+      return "Lỗi voice: \(message)"
+    case .sleeping:
+      break
+    }
+    if let diagnostic = agent.voiceWakeDiagnostic { return diagnostic }
+    if !agent.pttTranscript.isEmpty { return "Transcript: \(agent.pttTranscript)" }
     if let status = agent.voiceStatus, !status.voice.available {
-      return status.voice.details ?? "Microphone or speech-to-text is unavailable."
+      return "Lỗi voice: \(status.voice.details ?? "Microphone hoặc speech-to-text không khả dụng.")"
     }
-    if let status = agent.voiceStatus, !status.wake.available {
-      return status.wake.hint ?? "Wake phrase is unavailable."
+    if agent.voiceStatus == nil { return "Voice đang khởi động…" }
+    return "Bấm cat để bắt đầu Voice"
+  }
+
+  private var voiceStateColor: Color {
+    switch agent.voiceDisplayPhase {
+    case .wake, .wakeDetected, .listening, .thinking: return .orange
+    case .transcript, .speaking, .acting: return .green
+    case .error: return .red
+    case .sleeping: break
     }
-    if agent.voiceStatus?.voice.active == true { return "Dừng voice" }
-    if agent.voiceStatus?.wake.active == true { return "Tắt chờ wake phrase" }
-    return "Chờ \"hey JL\""
+    if agent.voiceWakeDiagnostic != nil { return .orange }
+    if let status = agent.voiceStatus, !status.voice.available {
+      return .red
+    }
+    if !agent.pttTranscript.isEmpty { return .green }
+    return .secondary
   }
 
   var body: some View {
@@ -165,7 +230,7 @@ struct CompanionView: View {
           .onChange(of: answerText) { _ in scheduleBubbleDismissal() }
       }
 
-      VStack(spacing: 5) {
+      VStack(spacing: 8) {
         CompanionCharacterImage(state: state)
           .fixedSize()
           .scaleEffect(reaction ? 1.04 : 1)
@@ -173,45 +238,41 @@ struct CompanionView: View {
           .animation(.easeOut(duration: 0.16), value: reaction)
           .accessibilityLabel(state.accessibilityLabel)
           .onTapGesture { react() }
-          .contextMenu {
-            Button("Chờ \"hey JL\"") { agent.toggleVoiceFromCompanion() }
-            Button("Mở JL") { onOpenMain() }
+
+        HStack(spacing: 4) {
+          Image(systemName: "waveform")
+            .accessibilityHidden(true)
+          Text(voiceStateText)
+        }
+          .font(.caption)
+          .foregroundStyle(voiceStateColor)
+          .lineLimit(2)
+          .multilineTextAlignment(.center)
+          .frame(maxWidth: 210)
+          .accessibilityLabel(voiceStateText)
+
+        HStack(spacing: 6) {
+          Button("Mở chat") { onOpenMain() }
+            .buttonStyle(.borderless)
+          if #available(macOS 14.0, *) {
+            CompanionSettingsButton()
+          } else {
+            Button("Cài đặt") {
+              openSettings()
+            }
+            .buttonStyle(.borderless)
           }
-
-        Button {
-          agent.toggleVoiceFromCompanion()
-        } label: {
-          Image(systemName: agent.voiceStatus?.voice.active == true ? "stop.fill" : "mic.fill")
-            .font(.system(size: 12, weight: .semibold))
-            .frame(width: 28, height: 28)
+          Button("Thoát JL", role: .destructive) { NSApp.terminate(nil) }
+            .buttonStyle(.borderless)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(
-          agent.voiceStatus?.voice.active == true
-            ? .red
-            : agent.voiceStatus?.wake.active == true ? .orange : .accentColor
-        )
-        .help(voiceHelp)
-        .accessibilityLabel(voiceHelp)
-
-        Button {
-          onOpenMain()
-        } label: {
-          Image(systemName: "text.bubble.fill")
-            .font(.system(size: 12, weight: .semibold))
-            .frame(width: 28, height: 28)
-        }
-        .buttonStyle(.bordered)
-        .help("Mở chat text")
-        .accessibilityLabel("Mở chat text")
+        .font(.caption)
       }
       .onHover { isHovering = $0 }
     }
     .padding(8)
     .animation(.easeOut(duration: 0.16), value: state)
-    .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+    .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { _ in
       let isActive = agent.voiceStatus?.voice.active == true
-        || agent.voiceStatus?.wake.active == true
         || agent.isWorking
         || agent.companionAnswer != nil
       if isActive {
@@ -219,9 +280,6 @@ struct CompanionView: View {
         isSleeping = false
       } else if Date().timeIntervalSince(lastActivityAt) >= 60 {
         isSleeping = true
-      }
-      if agent.voiceStatus?.voice.active == true || agent.voiceStatus?.wake.active == true {
-        Task { await agent.refreshVoice() }
       }
     }
     .onDisappear { bubbleDismissTask?.cancel() }
@@ -239,10 +297,18 @@ struct CompanionView: View {
     }
   }
 
+  private func openSettings() {
+    NSApp.activate(ignoringOtherApps: true)
+    DispatchQueue.main.async {
+      NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+  }
+
   private func react() {
     lastActivityAt = Date()
     isSleeping = false
     withAnimation { reaction = true }
+    agent.toggleVoiceSession()
     Task { @MainActor in
       try? await Task.sleep(for: .milliseconds(180))
       withAnimation { reaction = false }
@@ -256,6 +322,16 @@ struct CompanionView: View {
       guard !Task.isCancelled else { return }
       agent.dismissCompanionAnswer()
     }
+  }
+}
+
+@available(macOS 14.0, *)
+private struct CompanionSettingsButton: View {
+  @Environment(\.openSettings) private var openSettings
+
+  var body: some View {
+    Button("Cài đặt") { openSettings() }
+      .buttonStyle(.borderless)
   }
 }
 

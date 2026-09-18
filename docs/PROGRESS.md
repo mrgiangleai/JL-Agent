@@ -1,6 +1,29 @@
 # JL Agent progress
 
-Last updated: 2026-09-17 ICT
+Last updated: 2026-09-18 ICT
+
+## Hermes-only Voice milestone — accepted checkpoint
+
+- The current Voice path is Hermes-only and uses pinned Hermes `0.21.2` native
+  Voice for microphone capture, VAD, STT, brain routing, and TTS. JL provides
+  only the authenticated session/UI adapter; no second Voice engine or Voice
+  behavior customization is active.
+- Duplicate Voice wiring was removed. One Companion owner renders the Voice
+  status/transcript, one view-model refresh loop owns subscriptions, and one
+  start/stop path owns each Hermes Voice session.
+- Vietnamese Voice, live/partial transcript, complete final transcript,
+  configurable VAD/settings, conversational follow-up, and full microphone
+  release on stop/timeout are working in the packaged root app.
+- PersonalJarvis integration, submodule, environment, provisioning, runtime
+  state, and active references were removed. The remaining PersonalJarvis
+  mentions are historical Phase 1 audit material only.
+- Real-mic acceptance passed end to end. Repeated packaged Voice start/stop
+  smoke, Python regression (212 tests), native Swift tests, packaged release
+  build, strict signing verification, and Hermes revision verification passed.
+- No Voice behavior or latency optimization is planned in this checkpoint.
+  Preserve the Hermes pin and re-audit the Phase 6 patch before any future
+  Hermes upgrade. See `PHASE9_VOICE_HANDOFF.md` and
+  `HERMES_VOICE_STRATEGY.md`.
 
 ## Phase 9 closeout — personal daily-driver v1 complete
 

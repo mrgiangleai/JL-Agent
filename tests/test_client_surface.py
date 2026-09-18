@@ -195,13 +195,15 @@ class NativeClientSurfaceTests(unittest.TestCase):
         self.assertIn('"JL_AGENT_VOICE_ENABLED"', host_source)
         self.assertIn('"JL_AGENT_VOICE_ACTIVATION_APPROVED"', host_source)
         self.assertIn('"HERMES_DISABLE_LAZY_INSTALLS"', host_source)
-        self.assertNotIn("installed but microphone activation is not enabled", host_source)
+        self.assertNotIn(
+            "installed but microphone activation is not enabled", host_source
+        )
         for live_audio_marker in (
             "AVAudioEngine", "AVCaptureDevice", "AudioQueue", "sounddevice"
         ):
             self.assertNotIn(live_audio_marker, host_source)
 
-    def test_voice_requires_wake_phrase_and_uses_sherpa_candidate(self) -> None:
+    def test_voice_is_click_to_session_and_uses_native_hermes_endpoint(self) -> None:
         app_root = ROOT / "macos-app" / "Sources" / "JLAgentApp"
         view_model = (app_root / "AgentViewModel.swift").read_text(encoding="utf-8")
         content = (app_root / "ContentView.swift").read_text(encoding="utf-8")
@@ -213,16 +215,23 @@ class NativeClientSurfaceTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('wakePhraseDraft = "HEY JL"', view_model)
-        self.assertIn('status.wake.phrase ?? "hey jl"', view_model)
-        self.assertIn('voiceStatus?.wake.phrase ?? "hey jl"', settings)
-        self.assertIn('Button("Arm Wake")', content)
+        self.assertIn("voiceStatus?.voice.active == true", view_model)
+        self.assertIn('LabeledContent("Wake listener", value: "Disabled")', settings)
+        self.assertIn(
+            'Button("Refresh") { Task { await viewModel.refreshVoice() } }', content
+        )
         self.assertNotIn('Button("Call JL")', content)
-        self.assertIn('Image(systemName: "text.bubble.fill")', companion)
-        self.assertIn('.accessibilityLabel("Mở chat text")', companion)
-        self.assertIn('startWake()', view_model)
-        self.assertIn("voice_requires_wake_phrase", voice_source)
-        self.assertIn("VOICE_SILENCE_TIMEOUT_SECONDS = 20.0", voice_source)
+        self.assertIn('Image(systemName: "waveform")', companion)
+        self.assertEqual(companion.count("Text(voiceStateText)"), 1)
+        self.assertNotIn('Label("Bấm cat để bắt đầu Hermes Voice"', companion)
+        self.assertNotIn('Task { await agent.refreshVoice() }', companion)
+        self.assertIn("toggleVoiceSession()", view_model)
+        self.assertNotIn("startWakeIfNeeded", view_model)
+        self.assertNotIn("voice_requires_wake_phrase", voice_source)
+        self.assertIn('raise VoiceError("wake_disabled")', voice_source)
+        self.assertIn("silence_threshold=silence_threshold", voice_source)
+        self.assertIn("silence_duration=silence_duration", voice_source)
+        self.assertNotIn("HERMES_LOCAL_STT_LANGUAGE", voice_source)
 
     def test_companion_ui_is_transparent_stateful_and_secondary_to_chat(self) -> None:
         app_root = ROOT / "macos-app" / "Sources" / "JLAgentApp"
@@ -241,6 +250,10 @@ class NativeClientSurfaceTests(unittest.TestCase):
             self.assertTrue(
                 (app_root / "Resources" / "JLCharacter" / f"{state}.png").is_file()
             )
+        for state in (
+            "wake", "transcript", "processing", "speaking", "conversationalListening"
+        ):
+            self.assertIn(state, companion)
         self.assertIn('resources: [.process("Resources")]', package)
         build_app = (ROOT / "macos-app" / "Scripts" / "build-app.sh").read_text(
             encoding="utf-8"
@@ -250,7 +263,7 @@ class NativeClientSurfaceTests(unittest.TestCase):
         self.assertIn('.frame(width: 640, height: 520)', app)
         self.assertIn('configureMainWindow()', app)
         self.assertIn('onTapGesture { react() }', companion)
-        self.assertIn('Timer.publish(every: 1', companion)
+        self.assertIn('Timer.publish(every: 0.25', companion)
         self.assertIn('Task.sleep(for: .seconds(10))', companion)
         self.assertIn('styleMask: [.borderless, .nonactivatingPanel]', controller)
         self.assertIn('panel.backgroundColor = .clear', controller)
@@ -267,7 +280,9 @@ class NativeClientSurfaceTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('if launcherURL.pathExtension == "sh"', runtime_controller)
         self.assertIn('child.executableURL = launcherURL', runtime_controller)
-        self.assertIn('child.executableURL = URL(fileURLWithPath: "/bin/zsh")', runtime_controller)
+        self.assertIn(
+            'child.executableURL = URL(fileURLWithPath: "/bin/zsh")', runtime_controller
+        )
 
 
 if __name__ == "__main__":
